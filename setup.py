@@ -7,6 +7,7 @@ setup_info = dict(
     packages=find_packages(),
     install_requires=[
         "gensim",
+        "pandas",
     ],
 )
 
