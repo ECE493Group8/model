@@ -1,15 +1,7 @@
 from gensim.models import Word2Vec as GensimWord2Vec
-from gensim.models.callbacks import CallbackAny2Vec
 from gensim.test.utils import common_texts
 
-
-class Word2VecEpochCallback(CallbackAny2Vec):
-    def __init__(self):
-        self.epoch = 0
-
-    def on_epoch_end(self, model):
-        self.epoch += 1
-        return super().on_epoch_end(model)
+from utils.callbacks import Word2VecEpochCallback
 
 
 class Word2Vec:
