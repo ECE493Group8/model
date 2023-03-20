@@ -2,7 +2,7 @@
 
 This repository contains the code to train models.
 
-# Installation
+## Installation
 
 ```sh
 $ python3 -m venv .venv
@@ -21,3 +21,7 @@ PG_URI=postgres://<username>:<password>@localhost/<database-name>
 ```
 
 Where `<username>`, `<password>`, and `<database-name>` are replaced with the values for connecting to the database on your server.
+
+## Helpful Notes for Later
+- `m.wv.most_similar(negative=['man'], positive=['dad', 'woman'])`
+- https://radimrehurek.com/gensim/auto_examples/tutorials/run_word2vec.html#visualising-word-embeddings
