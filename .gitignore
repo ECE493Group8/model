@@ -161,3 +161,7 @@ cython_debug/
 
 # VSCode
 .vscode/
+
+# Gensim models
+*.model
+*.npy
