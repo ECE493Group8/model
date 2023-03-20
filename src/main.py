@@ -3,11 +3,16 @@ import logging
 import os
 
 from gensim.models.word2vec import LineSentence
+from dotenv import load_dotenv
 
 from models.word2vec import MalamudWord2Vec
 from data.amazon_dataset import AmazonDataset
+from data.malamud_dataset import MalamudDataset
 from utils.callbacks import EpochLogger, EpochSaver
 
+# Load database connection string (set in .env file)
+load_dotenv()
+POSTGRES_URI = os.getenv('PG_URI')
 
 def main(args):
     _setup_directory(args)
@@ -17,7 +22,8 @@ def main(args):
     if args.test:
         epoch_logger = EpochLogger()
         epoch_saver = EpochSaver(args.directory, frequency=1)
-        dataset = AmazonDataset("./amazon_product_reviews.json")
+        dataset = MalamudDataset(postgres_uri=POSTGRES_URI)
+        # dataset = AmazonDataset("./amazon_product_reviews.json")
         # dataset = LineSentence("./test_dataset.txt")  # For if you want to try an extremely small dataset.
         model = MalamudWord2Vec(workers=args.workers,
                                 epochs=args.epochs,
