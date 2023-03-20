@@ -9,6 +9,7 @@ setup_info = dict(
         "gensim",
         "pandas",
         "connectorx",
+        "python-dotenv",
     ],
 )
 
