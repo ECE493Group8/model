@@ -15,6 +15,12 @@ class EpochSaver(CallbackAny2Vec):
         self.directory = directory
         self.frequency = frequency
 
+    def on_train_begin(self, model: Word2Vec):
+        # Save the model at the beginning of training (after it has compiled)
+        # the vocabulary so that we don't have to load in the vocabulary if we
+        # want to start training again on the same dataset.
+        model.save(os.path.join(self.directory, "start.model"))
+
     def on_epoch_begin(self, model: Word2Vec):
         self.epoch += 1
 
