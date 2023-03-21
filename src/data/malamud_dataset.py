@@ -30,7 +30,8 @@ class MalamudDataset:
         with self.conn as query:
             for chunked_dfs in self.query_chunked_dfs(query, PG_QUERY, chunk_size=self.chunk_size):  # TODO: Experiment with different chunk sizes
                 for df in chunked_dfs:
-                    yield df
+                    for ngram in df:
+                        yield ngram
 
     # Adapted from example in https://github.com/uktrade/streampq#chunked-pandas-dataframes-of-sql-query-results
     def query_chunked_dfs(self, query, sql, chunk_size):
