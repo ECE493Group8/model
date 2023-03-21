@@ -1,6 +1,4 @@
 import gensim
-import connectorx as cx
-
 import itertools
 import pandas as pd
 from streampq import streampq_connect
