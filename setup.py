@@ -10,6 +10,7 @@ setup_info = dict(
         "pandas",
         "connectorx",
         "python-dotenv",
+        "streampq",
     ],
 )
 
