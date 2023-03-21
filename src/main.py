@@ -10,9 +10,20 @@ from data.amazon_dataset import AmazonDataset
 from data.malamud_dataset import MalamudDataset
 from utils.callbacks import EpochLogger, EpochSaver
 
-# Load database connection string (set in .env file)
+# Load database connection variables (set in .env file)
 load_dotenv()
-POSTGRES_URI = os.getenv('PG_URI')
+POSTGRES_HOST = os.getenv('PG_HOST', 'localhost')
+POSTGRES_PORT = os.getenv('PG_PORT', '5432')
+POSTGRES_DBNAME = os.getenv('PG_DBNAME', 'malamud')
+POSTGRES_USER = os.getenv('PG_USER')
+POSTGRES_PASSWORD = os.getenv('PG_PASS')
+POSTGRES_CONNECTION = (
+    ('host', POSTGRES_HOST),
+    ('port', POSTGRES_PORT),
+    ('dbname', POSTGRES_DBNAME),
+    ('user', POSTGRES_USER),
+    ('password', POSTGRES_PASSWORD),
+)
 
 def main(args):
     _setup_directory(args)
@@ -22,7 +33,7 @@ def main(args):
     if args.test:
         epoch_logger = EpochLogger()
         epoch_saver = EpochSaver(args.directory, frequency=1)
-        dataset = MalamudDataset(postgres_uri=POSTGRES_URI)
+        dataset = MalamudDataset(postgres_conn_params=POSTGRES_CONNECTION, chunk_size=10000)
         # dataset = AmazonDataset("./amazon_product_reviews.json")
         # dataset = LineSentence("./test_dataset.txt")  # For if you want to try an extremely small dataset.
         model = MalamudWord2Vec(workers=args.workers,
