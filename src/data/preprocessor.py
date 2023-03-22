@@ -1,5 +1,7 @@
 import logging
+from io import StringIO
 import os
+from timeit import default_timer as timer
 
 from dotenv import load_dotenv
 from gensim.models.phrases import FrozenPhrases, Phraser, Phrases
@@ -37,10 +39,11 @@ class Preprocessor:
         """
         """
     )
+    # TODO: Change name of table.
     TABLE = (
         """
-        CREATE TABLE IF NOT EXISTS %s (
-            ngram text,
+        CREATE TABLE ngram_data (
+            ngram text
         );
         """
     )
@@ -50,30 +53,43 @@ class Preprocessor:
                  password: str,
                  host: str,
                  database: str,
-                 table_name: str,
                  min_count: int,
                  cursor_itersize: int,
                  cursor_fetchsize: int,
                  phrases_progress_per: int = 100000):
         self.db_connection = psycopg2.connect(
             host=host, database=database, user=user, password=password)
-        self.table_name = table_name
         self.min_count = min_count
         self.cursor_itersize = cursor_itersize
         self.cursor_fetchsize = cursor_fetchsize
         self.phrases_progress_per = phrases_progress_per
 
     def preprocess(self):
-        cursor = self.db_connection.cursor("cursor-create-table")
-        cursor.execute(Preprocessor.TABLE, (self.table_name,))
+        logger.info("creating table...")
+        start_time = timer()
+        self._create_data_table()
+        logger.info(f"creating table took {timer() - start_time}")
 
+        logger.info("generating phrases...")
+        start_time = timer()
         frozen_phrases = self._create_frozen_phrases()
+        logger.info(f"generating phrases took {timer() - start_time}")
+
+        logger.info("writing phrases to table...")
+        start_time = timer()
         self._write_phrases(frozen_phrases)
+        logger.info(f"writing phrases to table took {timer() - start_time}")
+
+    def _create_data_table(self):
+        cursor = self.db_connection.cursor()
+        cursor.execute(Preprocessor.TABLE)
+        self.db_connection.commit()
+        cursor.close()
 
     def _create_frozen_phrases(self) -> FrozenPhrases:
         cursor = self.db_connection.cursor("cursor-create-frozen-phrases")
         cursor.itersize = self.cursor_itersize
-        cursor.execute(Preprocessor.QUERY, (self.table_name,))
+        cursor.execute(Preprocessor.QUERY)
 
         # TODO: Parameters
         phrases = Phrases(sentences=None,
@@ -94,22 +110,33 @@ class Preprocessor:
         return Phraser(phrases)
 
     def _write_phrases(self, frozen_phrases: FrozenPhrases):
-        read_cursor = self.db_connection.cursor("cursor-write-phrases")
+        write_cursor = self.db_connection.cursor()
+        read_cursor = self.db_connection.cursor("cursor-read-phrases")
         read_cursor.itersize = self.cursor_itersize
         read_cursor.execute(Preprocessor.QUERY)
-        with open("./phrases.txt", "w") as file:
-            while True:
-                rows = read_cursor.fetchmany(self.cursor_fetchsize)
-                if not rows:
-                    break
-                for row in rows:
-                    row_str = row[0]
-                    phrased = " ".join(frozen_phrases[row_str.split(" ")])
-                    phrased = " ".join(simple_preprocess(phrased))
-                    phrased = remove_stopwords(phrased, STOPWORDS)
-                    if len(phrased) > 0:
-                        file.write(f"{phrased}\n")
+
+        while True:
+            rows = read_cursor.fetchmany(self.cursor_fetchsize)
+            if not rows:
+                break
+            memory_file = StringIO()
+            insert_values = []
+            for row in rows:
+                row_str = row[0]
+                phrased = " ".join(frozen_phrases[row_str.split(" ")])
+                phrased = " ".join(simple_preprocess(phrased))
+                phrased = remove_stopwords(phrased, STOPWORDS)
+                if len(phrased) > 0:
+                    insert_values.append(f"{phrased}\n")
+            # https://stackoverflow.com/questions/47116877/efficiently-insert-massive-amount-of-rows-in-psycopg2
+            memory_file.writelines(insert_values)
+            memory_file.seek(0)
+            write_cursor.copy_from(memory_file, "ngram_data", columns=("ngram",))
+
         read_cursor.close()
+        write_cursor.close()
+        self.db_connection.commit()
+
 
 
 
@@ -126,7 +153,7 @@ if __name__ == "__main__":
     host = "localhost"
     database = "malamud"
 
-    p = Preprocessor(user, password, host, database, "my_table", 1, 10000, 1000)
+    p = Preprocessor(user, password, host, database, 1, 10000, 1000)
     p.preprocess()
 
     # Load data using connectorx
