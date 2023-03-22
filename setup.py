@@ -8,6 +8,7 @@ setup_info = dict(
     install_requires=[
         "gensim",
         "pandas",
+        "psycopg2",
     ],
 )
 
