@@ -33,7 +33,13 @@ def main(args):
     if args.test:
         epoch_logger = EpochLogger()
         epoch_saver = EpochSaver(args.directory, frequency=1)
-        dataset = MalamudDataset(postgres_conn_params=POSTGRES_CONNECTION, chunk_size=args.chunk_size)
+        dataset = MalamudDataset(
+            postgres_conn_params=POSTGRES_CONNECTION,
+            chunk_size=args.chunk_size,
+            table=args.table,
+            column=args.column,
+            rows=args.rows
+        )
         # dataset = AmazonDataset("./amazon_product_reviews.json")
         # dataset = LineSentence("./test_dataset.txt")  # For if you want to try an extremely small dataset.
         model = MalamudWord2Vec(workers=args.workers,
@@ -65,6 +71,9 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, required=True)
     parser.add_argument("--vector_size", type=int, required=True)
     parser.add_argument("--chunk_size", type=int, default=100000)
+    parser.add_argument("--table", type=str, default='docs.doc_ngrams_0')
+    parser.add_argument("--column", type=str, default='ngram_lc')
+    parser.add_argument("--rows", type=int, default=float('inf')),
     parser.add_argument("--test", action="store_true")  # Used for testing.
     args = parser.parse_args()
 
