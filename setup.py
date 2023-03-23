@@ -8,6 +8,8 @@ setup_info = dict(
     install_requires=[
         "gensim",
         "pandas",
+        "python-dotenv",
+        "streampq",
     ],
 )
 
