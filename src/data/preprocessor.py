@@ -1,5 +1,6 @@
 import logging
 from io import StringIO
+import multiprocessing as mp
 import os
 from timeit import default_timer as timer
 
@@ -32,6 +33,19 @@ class Preprocessor:
     QUERY_LIMITED = (
         """
         SELECT ngram_lc FROM docs.doc_ngrams_0 WHERE ngram_lc LIKE '%back pain%';
+        """
+    )
+    QUERY_OFFSET_LIMITED = (
+        """
+        SELECT ngram_lc FROM docs.doc_ngrams_0 WHERE ngram_lc LIKE '%%back pain%%' LIMIT %s OFFSET %s;
+        """
+    )
+    # TODO: Change query.
+    QUERY_OFFSET_LIMITED_ROWNUM = (
+        """
+        SELECT ngram_lc FROM (
+            SELECT ngram_lc, row_number() over() AS row_num FROM docs.doc_ngrams_0
+        ) t2 WHERE ngram_lc LIKE '%%back pain%%' AND row_num %% %s = %s;
         """
     )
     # TODO
@@ -110,13 +124,80 @@ class Preprocessor:
         return Phraser(phrases)
 
     def _write_phrases(self, frozen_phrases: FrozenPhrases):
-        write_cursor = self.db_connection.cursor()
-        read_cursor = self.db_connection.cursor("cursor-read-phrases")
-        read_cursor.itersize = self.cursor_itersize
-        read_cursor.execute(Preprocessor.QUERY)
+        # write_cursor = self.db_connection.cursor()
+        # read_cursor = self.db_connection.cursor("cursor-read-phrases")
+        # read_cursor.itersize = self.cursor_itersize
+        # read_cursor.execute(Preprocessor.QUERY)
+
+        N_PROCESSES = 16
+        processes = [
+            mp.Process(
+                target=self._write_phrases_parallel,
+                args=(i,
+                      N_PROCESSES,  # TODO: Number of processes.
+                      self.cursor_itersize,
+                      self.cursor_fetchsize,
+                      798,  # TODO: Make variable.
+                      frozen_phrases))
+            for i in range(N_PROCESSES)
+        ]
+        for process in processes:
+            process.start()
+        for process in processes:
+            process.join()
+
+        # while True:
+        #     rows = read_cursor.fetchmany(self.cursor_fetchsize)
+        #     if not rows:
+        #         break
+        #     memory_file = StringIO()
+        #     insert_values = []
+        #     for row in rows:
+        #         row_str = row[0]
+        #         phrased = " ".join(frozen_phrases[row_str.split(" ")])
+        #         phrased = " ".join(simple_preprocess(phrased))
+        #         phrased = remove_stopwords(phrased, STOPWORDS)
+        #         if len(phrased) > 0:
+        #             insert_values.append(f"{phrased}\n")
+        #     # https://stackoverflow.com/questions/47116877/efficiently-insert-massive-amount-of-rows-in-psycopg2
+        #     memory_file.writelines(insert_values)
+        #     memory_file.seek(0)
+        #     write_cursor.copy_from(memory_file, "ngram_data", columns=("ngram",))
+
+        # read_cursor.close()
+        # write_cursor.close()
+        # self.db_connection.commit()
+
+    def _write_phrases_parallel(self,
+                                id: int,
+                                n_processes: int,
+                                itersize: int,
+                                fetchsize: int,
+                                query_size: int,
+                                frozen_phrases: FrozenPhrases):
+        start_time = timer()
+
+        # start_index = id * (query_size // n_processes)
+        # if id < n_processes - 1:
+        #     end_index = (id + 1) * (query_size // n_processes) - 1
+        # else:
+        #     end_index = query_size - 1
+
+        query_limit = query_size // n_processes
+        query_offset = id * (query_limit)
+
+        local_db_connection = psycopg2.connect(
+            host="localhost", database="malamud", user="chris", password="12345")
+        write_cursor = local_db_connection.cursor()
+        read_cursor = local_db_connection.cursor(f"cursor-read-phrases-{id}")
+        read_cursor.itersize = itersize
+        # read_cursor.execute(Preprocessor.QUERY_OFFSET_LIMITED, (query_limit, query_offset))
+        read_cursor.execute(Preprocessor.QUERY_OFFSET_LIMITED_ROWNUM, (n_processes, id))
+        # read_cursor.execute(Preprocessor.QUERY)
 
         while True:
-            rows = read_cursor.fetchmany(self.cursor_fetchsize)
+            rows = read_cursor.fetchmany(fetchsize)
+            print(f"process {id} fetched rows")
             if not rows:
                 break
             memory_file = StringIO()
@@ -127,18 +208,18 @@ class Preprocessor:
                 phrased = " ".join(simple_preprocess(phrased))
                 phrased = remove_stopwords(phrased, STOPWORDS)
                 if len(phrased) > 0:
-                    insert_values.append(f"{phrased}\n")
+                    # insert_values.append(f"{phrased}\n")
+                    write_cursor.execute("INSERT INTO ngram_data (ngram) VALUES (%s);", (phrased,))
             # https://stackoverflow.com/questions/47116877/efficiently-insert-massive-amount-of-rows-in-psycopg2
-            memory_file.writelines(insert_values)
-            memory_file.seek(0)
-            write_cursor.copy_from(memory_file, "ngram_data", columns=("ngram",))
+            # memory_file.writelines(insert_values)
+            # memory_file.seek(0)
+            # write_cursor.copy_from(memory_file, "ngram_data", columns=("ngram",))
 
         read_cursor.close()
         write_cursor.close()
-        self.db_connection.commit()
+        local_db_connection.commit()
 
-
-
+        print(f"process {id} took {timer() - start_time}")
 
 
 if __name__ == "__main__":
