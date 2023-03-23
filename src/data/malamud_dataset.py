@@ -21,11 +21,12 @@ class MalamudDataset:
         chunk_size: Integer indicating the number of rows in each dataframe chunk
     """
     def __init__(self, postgres_conn_params: tuple, chunk_size: int=10000):
-        self.conn = streampq_connect(postgres_conn_params)
+        self.postgres_conn_params = postgres_conn_params
         self.chunk_size = chunk_size
 
     def __iter__(self):
-        with self.conn as query:
+        conn = streampq_connect(self.postgres_conn_params)
+        with conn as query:
             for chunked_dfs in self.query_chunked_dfs(query, PG_QUERY, chunk_size=self.chunk_size):  # TODO: Experiment with different chunk sizes
                 for df in chunked_dfs:
                     for ngram in df:
