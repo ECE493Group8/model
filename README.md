@@ -16,7 +16,7 @@ The model training script expects ngram data to be stored in `docs.doc_ngram_0` 
 
 An example .env file could be:
 
-```
+```sh
 PG_URI=postgres://<username>:<password>@localhost/<database-name>
 ```
 
