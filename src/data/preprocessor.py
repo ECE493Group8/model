@@ -25,11 +25,17 @@ logger = logging.getLogger(__name__)
 class Preprocessor:
     # TODO: Change query.
     # TODO: Get those with count > 0?
+    # QUERY = (
+    #     """
+    #     SELECT ngram_lc FROM docs.doc_ngrams_0 WHERE ngram_lc LIKE '%back pain%';
+    #     """
+    # )
     QUERY = (
         """
-        SELECT ngram_lc FROM docs.doc_ngrams_0 WHERE ngram_lc LIKE '%back pain%';
+        SELECT ngram_lc FROM docs.doc_ngrams_0 WHERE ngram_tokens > 1;
         """
     )
+
     QUERY_LIMITED = (
         """
         SELECT ngram_lc FROM docs.doc_ngrams_0 WHERE ngram_lc LIKE '%back pain%';
@@ -106,19 +112,22 @@ class Preprocessor:
         cursor.execute(Preprocessor.QUERY)
 
         # TODO: Parameters
+        # TODO: Change max vocab size for larger
+        # for 100M, we got around 10M vocab
         phrases = Phrases(sentences=None,
-                          min_count=1,  # Parameter from previous group's work.
-                          threshold=1,  # Parameter from previous group's work.
+                          min_count=5,  # Parameter from previous group's work.
+                          threshold=10,  # Parameter from previous group's work.
                           progress_per=self.phrases_progress_per)
 
         while True:
             rows = cursor.fetchmany(self.cursor_fetchsize)
             if not rows:
                 break
-            for row in rows:
-                row_str = row[0]
-                phrases.add_vocab([row_str.split(" ")])
-                # print(row[0])  # TODO: Remove
+            rows = [row[0].split(" ") for row in rows]
+            phrases.add_vocab(rows)
+            # for row in rows:
+            #     row_str = row[0]
+            #     phrases.add_vocab([row_str.split(" ")])
         cursor.close()
 
         return Phraser(phrases)
@@ -129,7 +138,7 @@ class Preprocessor:
         # read_cursor.itersize = self.cursor_itersize
         # read_cursor.execute(Preprocessor.QUERY)
 
-        N_PROCESSES = 16
+        N_PROCESSES = 4
         processes = [
             mp.Process(
                 target=self._write_phrases_parallel,
@@ -137,7 +146,7 @@ class Preprocessor:
                       N_PROCESSES,  # TODO: Number of processes.
                       self.cursor_itersize,
                       self.cursor_fetchsize,
-                      798,  # TODO: Make variable.
+                      100000000,  # TODO: Make variable.
                       frozen_phrases))
             for i in range(N_PROCESSES)
         ]
@@ -177,15 +186,15 @@ class Preprocessor:
                                 frozen_phrases: FrozenPhrases):
         start_time = timer()
 
-        start_index = id * (query_size // n_processes)
-        if id < n_processes - 1:
-            end_index = (id + 1) * (query_size // n_processes) - 1
-        else:
-            end_index = query_size - 1
-        current_index = 0
+        # start_index = id * (query_size // n_processes)
+        # if id < n_processes - 1:
+        #     end_index = (id + 1) * (query_size // n_processes) - 1
+        # else:
+        #     end_index = query_size - 1
+        # current_index = 0
 
-        query_limit = query_size // n_processes
-        query_offset = id * (query_limit)
+        # query_limit = query_size // n_processes
+        # query_offset = id * (query_limit)
 
         local_db_connection = psycopg2.connect(
             host="localhost", database="malamud", user="chris", password="12345")
@@ -208,7 +217,7 @@ class Preprocessor:
                 phrased = " ".join(frozen_phrases[row_str.split(" ")])
                 phrased = " ".join(simple_preprocess(phrased))
                 phrased = remove_stopwords(phrased, STOPWORDS)
-                if len(phrased) > 0:
+                if phrased.count(" ") >= self.min_count - 1:
                     # insert_values.append(f"{phrased}\n")
                     write_cursor.execute("INSERT INTO ngram_data (ngram) VALUES (%s);", (phrased,))
             # https://stackoverflow.com/questions/47116877/efficiently-insert-massive-amount-of-rows-in-psycopg2
@@ -225,7 +234,9 @@ class Preprocessor:
 
 
 if __name__ == "__main__":
+    # TODO: Change filename.
     logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                        filename="./run_preprocessor_1",
                         level=logging.INFO,
                         datefmt="%Y-%m-%d %H:%M:%S")
 
@@ -236,7 +247,7 @@ if __name__ == "__main__":
     host = "localhost"
     database = "malamud"
 
-    p = Preprocessor(user, password, host, database, 1, 10000, 1000)
+    p = Preprocessor(user, password, host, database, 2, 10000, 10000)
     p.preprocess()
 
     # Load data using connectorx
