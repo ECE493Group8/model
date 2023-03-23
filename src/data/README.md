@@ -9,6 +9,6 @@ Table: `docs.doc_ngrams_0`
 
 Command to load the first ~10mil lines from the ngram dump into the `malamud` db:
 
-```
+```sh
 sed -n '44,100000000p;100000000q' doc_ngrams_0.sql | psql malamud
 ```
