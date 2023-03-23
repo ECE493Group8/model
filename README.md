@@ -20,6 +20,8 @@ $ pip install -e .
 
 # Database
 
+~7 mins to build index on 100M row table.
+
 Command for postgres executable:
 ```sh
 export PATH=${PATH}:/usr/lib/postgresql/14/bin

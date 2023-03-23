@@ -118,7 +118,7 @@ class Preprocessor:
             for row in rows:
                 row_str = row[0]
                 phrases.add_vocab([row_str.split(" ")])
-                print(row[0])  # TODO: Remove
+                # print(row[0])  # TODO: Remove
         cursor.close()
 
         return Phraser(phrases)
@@ -177,11 +177,12 @@ class Preprocessor:
                                 frozen_phrases: FrozenPhrases):
         start_time = timer()
 
-        # start_index = id * (query_size // n_processes)
-        # if id < n_processes - 1:
-        #     end_index = (id + 1) * (query_size // n_processes) - 1
-        # else:
-        #     end_index = query_size - 1
+        start_index = id * (query_size // n_processes)
+        if id < n_processes - 1:
+            end_index = (id + 1) * (query_size // n_processes) - 1
+        else:
+            end_index = query_size - 1
+        current_index = 0
 
         query_limit = query_size // n_processes
         query_offset = id * (query_limit)
@@ -192,17 +193,17 @@ class Preprocessor:
         read_cursor = local_db_connection.cursor(f"cursor-read-phrases-{id}")
         read_cursor.itersize = itersize
         # read_cursor.execute(Preprocessor.QUERY_OFFSET_LIMITED, (query_limit, query_offset))
-        read_cursor.execute(Preprocessor.QUERY_OFFSET_LIMITED_ROWNUM, (n_processes, id))
-        # read_cursor.execute(Preprocessor.QUERY)
+        # read_cursor.execute(Preprocessor.QUERY_OFFSET_LIMITED_ROWNUM, (n_processes, id))
+        read_cursor.execute(Preprocessor.QUERY)
 
         while True:
             rows = read_cursor.fetchmany(fetchsize)
-            print(f"process {id} fetched rows")
+            logger.info(f"process {id} fetched rows")
             if not rows:
                 break
             memory_file = StringIO()
             insert_values = []
-            for row in rows:
+            for row in rows[id::n_processes]:
                 row_str = row[0]
                 phrased = " ".join(frozen_phrases[row_str.split(" ")])
                 phrased = " ".join(simple_preprocess(phrased))
@@ -215,11 +216,12 @@ class Preprocessor:
             # memory_file.seek(0)
             # write_cursor.copy_from(memory_file, "ngram_data", columns=("ngram",))
 
+        # TODO: commit inside loop, not here?
         read_cursor.close()
         write_cursor.close()
         local_db_connection.commit()
 
-        print(f"process {id} took {timer() - start_time}")
+        logger.info(f"process {id} took {timer() - start_time}")
 
 
 if __name__ == "__main__":
