@@ -4,6 +4,9 @@ import argparse
 import gensim
 from time import perf_counter
 
+def word2med_preprocess(phrase: str):
+    return phrase
+
 class MalamudDataset:
     """Iterator class for loading malamud general index data from a postgres database
     
@@ -24,8 +27,7 @@ class MalamudDataset:
         # Initialize query
         self.q = (
             pl.scan_parquet(parq_path)
-            .select(pl.col(column).apply(lambda e: e.split(',')))
-            # .map(lambda e: list(gensim.utils.simple_tokenize(e)))
+            .select(pl.col(column).apply(lambda e: word2med_preprocess(e)))
         )
 
     def __iter__(self):
@@ -39,8 +41,6 @@ class MalamudDataset:
 
             # Get another chunk of data from the LazyFrame
             self.chunk = self.q.slice(self.offset_factor*self.chunk_size, self.chunk_size).collect()
-            # self.chunk = self.q.slice(self.offset_factor*self.chunk_size, self.chunk_size).collect() \
-                # .get_column(self.column).apply(gensim.utils.simple_preprocess).to_frame()
             self.offset_factor += 1
             self.current_row += self.chunk_size
             
