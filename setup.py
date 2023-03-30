@@ -9,6 +9,10 @@ setup_info = dict(
         "gensim",
         "pandas",
         "psycopg2",
+        "polars",
+        "dask",
+        "dask[distributed]",
+        "pyarrow",
     ],
 )
 

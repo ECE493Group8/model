@@ -1,14 +1,21 @@
+import argparse
+import glob
 import logging
 from io import StringIO
 import multiprocessing as mp
 import os
+import time
 from timeit import default_timer as timer
+from typing import List, Tuple
 
+from dask.distributed import Client
+import dask.dataframe as dd
 from dotenv import load_dotenv
 from gensim.models.phrases import FrozenPhrases, Phraser, Phrases
 from gensim.models.word2vec import Text8Corpus
 from gensim.parsing.preprocessing import remove_stopwords
 from gensim.utils import simple_preprocess
+import polars as pl
 import psycopg2
 
 from data.amazon_dataset import AmazonDataset
@@ -233,12 +240,408 @@ class Preprocessor:
         logger.info(f"process {id} took {timer() - start_time}")
 
 
+FROZEN_PHRASES_FILE_PREFIX = "frozen_phrases"
+PHRASES_MIN_COUNT = 5
+PHRASES_THRESHOLD = 10
+PHRASES_MAX_VOCAB_SIZE = 100000000
+PHRASES_PROGRESS_PER = 10000
+
+
+def merge_phrases(save_path: str) -> FrozenPhrases:
+    frozen_phrases_files = glob.glob(
+            os.path.join(save_path, f"{FROZEN_PHRASES_FILE_PREFIX}*"))
+    
+    frozen_phrases = FrozenPhrases.load(frozen_phrases_files[0])
+    for frozen_phrase_file in frozen_phrases_files:
+        temp_frozen_phrases = FrozenPhrases.load(frozen_phrase_file)
+        frozen_phrases.phrasegrams.update(temp_frozen_phrases.phrasegrams)
+
+    return frozen_phrases
+
+
+def create_phrases_process(
+    rank: int,
+    # n_processes: int,
+    skip_rows: int,
+    # n_rows: int,
+    rows_in_mem: int,
+    save_path: str,
+    data_path: str,
+):    
+    # chunk_size = n_rows // n_processes  # Number of lines to read in the file.
+    # assert chunk_size % rows_in_mem == 0  # TODO: Explain why this should be the case.
+    # disk_reads = chunk_size // rows_in_mem
+
+    frozen_phrases_file = os.path.join(
+            save_path, f"{FROZEN_PHRASES_FILE_PREFIX}_{rank}.model")
+
+    phrases = Phrases(sentences=None,
+                      min_count=PHRASES_MIN_COUNT,
+                      threshold=PHRASES_THRESHOLD,
+                      max_vocab_size=PHRASES_MAX_VOCAB_SIZE,
+                      progress_per=PHRASES_PROGRESS_PER)
+
+    def register_sentence(sentences: Tuple[List[str]]):
+        phrases.add_vocab(sentences)
+        return sentences
+
+    _ = (
+        pl.read_csv(
+            source=data_path,
+            separator='\t',
+            new_columns=[
+                "dkey",
+                "ngram",
+                "ngram_lc",
+                "ngram_tokens",
+                "ngram_count",
+                "term_freq",
+                "doc_count",
+                "insert_date",
+            ],
+            dtypes={
+                "dkey": pl.Utf8,
+                "ngram": pl.Utf8,
+                "ngram_lc": pl.Utf8,
+                "ngram_tokens": pl.UInt32,
+                "ngram_count": pl.UInt32,
+                "term_freq": pl.Float64,
+                "doc_count": pl.UInt32,
+                "insert_date": pl.Utf8,
+            },
+            # skip_rows=(skip_rows + rank * chunk_size + disk_read * rows_in_mem),  # TODO
+            skip_rows=(skip_rows + rank * rows_in_mem),  # TODO
+            n_rows=rows_in_mem,
+            quote_char=None,
+            encoding='utf8'
+        )
+        .head(n=rows_in_mem)  # TODO
+        .filter(pl.col("ngram_tokens") > 1)
+        .with_columns(pl.col("ngram_lc").str.split(" ").alias("ngram_lc_split"))
+        .select("ngram_lc_split")
+        .apply(register_sentence, return_dtype=pl.List)
+    )
+
+    frozen_phrases = Phraser(phrases)
+    frozen_phrases.save(frozen_phrases_file)
+
+
+def create_phrases(
+    n_processes: int,
+    skip_rows: int,
+    n_rows: int,
+    rows_in_mem: int,
+    save_path: str,
+    data_path: str,
+    verbose: bool = False,
+):
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                        filename=os.path.join(save_path, "create_phrases.log"),
+                        level=logging.INFO if verbose else logging.WARN,
+                        datefmt="%Y-%m-%d %H:%M:%S")
+
+    # processes = [
+    #     mp.Process(
+    #         target=create_phrases_process,
+    #         args=(
+    #             i,
+    #             n_processes,
+    #             skip_rows,
+    #             n_rows,
+    #             rows_in_mem,
+    #             save_path,
+    #             data_path,
+    #         )
+    #     )
+    #     for i in range(n_processes)
+    # ]
+    # 
+    # start_time = time.time()
+    # for process in processes:
+    #     process.start()
+    # for process in processes:
+    #     process.join()
+    # end_time = time.time()
+    # logger.warning(f"time = {end_time - start_time}")
+
+    # Create the phrases in parallel by reading different chunks of the file at
+    # a time.
+    process_pool = mp.Pool(processes=n_processes)
+    start_time = time.time()
+    process_pool.starmap(create_phrases_process,
+                         [
+                            (i, skip_rows, rows_in_mem, save_path, data_path)
+                            for i in range(n_rows // rows_in_mem)
+                         ])
+    end_time = time.time()
+    logger.warning(f"time to create phrases = {end_time - start_time}")
+
+    # Merge all the frozen phrases into one.
+    start_time = time.time()
+    frozen_phrases_file = \
+            os.path.join(save_path, f"{FROZEN_PHRASES_FILE_PREFIX}_merged.model")
+    frozen_phrases = merge_phrases(save_path)
+    frozen_phrases.save(frozen_phrases_file)
+    end_time = time.time()
+    logger.warning(f"time to merge phrases = {end_time - start_time}")
+
+    print(frozen_phrases[["new", "york"]])
+    print(frozen_phrases[["back", "pain"]])
+    print(frozen_phrases[["san", "francisco"]])
+
+
 if __name__ == "__main__":
     # TODO: Change filename.
-    logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-                        filename="./run_preprocessor_1",
-                        level=logging.INFO,
-                        datefmt="%Y-%m-%d %H:%M:%S")
+    # logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    #                     filename="./run_preprocessor_1",
+    #                     level=logging.INFO,
+    #                     datefmt="%Y-%m-%d %H:%M:%S")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--n-processes", type=int, required=True)
+    parser.add_argument("--skip-rows", type=int, required=True)
+    parser.add_argument("--n-rows", type=int, required=True)
+    parser.add_argument("--rows-in-mem", type=int, required=True)
+    parser.add_argument("--save-path", type=str, required=True)
+    parser.add_argument("--data-path", type=str, required=True)
+    args = parser.parse_args()
+
+    create_phrases(n_processes=args.n_processes,
+                   skip_rows=args.skip_rows,
+                   n_rows=args.n_rows,
+                   rows_in_mem=args.rows_in_mem,
+                   save_path=args.save_path,
+                   data_path=args.data_path)
+
+    exit()
+
+    # DATASET_PATH = "./test_malamud_small"
+    # DATASET_PATH = "./test_malamud"
+    DATASET_PATH = "/mnt/malamud_100m.data"
+
+    # TODO: Set max vocab.
+    phrases = Phrases(sentences=None,
+                        min_count=5,  # Parameter from previous group's work.  TODO
+                        threshold=10,  # Parameter from previous group's work.  TODO
+                        progress_per=1000)  # TODO
+
+
+    # DASK
+
+    def func(s: str):
+        print(s)
+        return s
+
+    # # TODO: Set workers?
+    # client = Client(memory_limit="32GB")
+    # df = dd.read_csv(DATASET_PATH,
+    #                 sep='\t',
+    #                 # dtype={
+    #                 #     "dkey": str,
+    #                 #     "ngram": str,
+    #                 #     "ngram_lc": str,
+    #                 #     "ngram_tokens": int,
+    #                 #     "ngram_count": int,
+    #                 #     "term_freq": float,
+    #                 #     "doc_count": int,
+    #                 #     "insert_date": str,
+    #                 # },
+    #                 dtype={
+    #                     "dkey": object,
+    #                     "ngram": object,
+    #                     "ngram_lc": object,
+    #                     "ngram_tokens": object,
+    #                     "ngram_count": object,
+    #                     "term_freq": object,
+    #                     "doc_count": object,
+    #                     "insert_date": object,
+    #                 },
+    #                 skiprows=46,
+    #                 on_bad_lines='warn',
+    #                 keep_default_na=False).head(n=1000)
+    # # df.apply(func, axis=1)
+    # # df.to_parquet("./test_dask_parquet")
+    # # dfto_parquet("./dask_test_parquet")
+    # # print(df["ngram_lc"])
+    # # results = data.drop
+    # print(df)
+    # exit()
+
+    # POLARS
+
+    def phrase(x: str):
+        # # for s in x:
+        # #     for c in s:
+        # #         print("iteration")
+        # #         print(c)
+        # #         print(type(c))
+        # # phrases.add_vocab(x)
+        # return
+        print(x)
+        # print(x.rows())
+        # print(type(x))
+        # phrases.add_vocab(x["ngram_lc_split"].tolist())
+        phrases.add_vocab([item[0] for item in x.rows()])
+        print("asdf")
+        return x
+
+    def preprocess(s: str):
+        print(s)
+        s = simple_preprocess(s[0])
+        return s
+
+    def phrase_str_list(l: List[str]):
+        # print(l)
+        phrases.add_vocab(l)
+        return l
+
+    def func(s: str):
+        print(s)
+        return s
+
+    def func2(s: str):
+        if s:
+            phrases.add_vocab(s.split(" "))
+        return s
+
+    ROWS = 100000
+    df = (
+        pl.read_csv(source=DATASET_PATH,
+                    separator='\t',
+                    new_columns=[
+                        "dkey",
+                        "ngram",
+                        "ngram_lc",
+                        "ngram_tokens",
+                        "ngram_count",
+                        "term_freq",
+                        "doc_count",
+                        "insert_date",
+                    ],
+                    dtypes={
+                        "dkey": pl.Utf8,
+                        "ngram": pl.Utf8,
+                        "ngram_lc": pl.Utf8,
+                        "ngram_tokens": pl.UInt32,
+                        "ngram_count": pl.UInt32,
+                        "term_freq": pl.Float64,
+                        "doc_count": pl.UInt32,
+                        "insert_date": pl.Utf8,
+                    },
+                    # null_values="\"",
+                    # comment_char='-',
+                    # skip_rows=45,
+                    skip_rows=1000000,
+                    n_rows=ROWS,
+                    quote_char=None,
+                    encoding='utf8')
+        .head(n=ROWS)
+        # .filter(pl.col("ngram_lc").str.contains("back|pain"))
+        # TODO: Select only those with ngram_tokens > 1?
+        .filter(pl.col("ngram_tokens") > 1)
+        .select("ngram_lc")
+        # .apply(preprocess, return_dtype=pl.Utf8)
+        .with_columns(pl.col("ngram_lc").str.split(" ").alias("ngram_lc_split"))
+        .select("ngram_lc_split")
+        .apply(phrase_str_list, return_dtype=pl.List)
+        # .apply(func, pl.List)
+    )
+    print(df)
+    print(df.shape)
+    print("done loading dataframe")
+    # df.apply(phrase_str_list, return_dtype=pl.List)
+    print("done applying function")
+    frozen_phrases = Phraser(phrases)
+    frozen_phrases.save("./frozen_phrases.model")
+    print(f"'back pain' = '{' '.join(frozen_phrases[['back', 'pain']])}'")
+
+    exit()
+
+    # TODO: Remove end of file.
+    df = (
+        pl.scan_csv(source=DATASET_PATH,
+                    separator='\t',
+                    new_columns=[
+                        "dkey",
+                        "ngram",
+                        "ngram_lc",
+                        "ngram_tokens",
+                        "ngram_count",
+                        "term_freq",
+                        "doc_count",
+                        "insert_date",
+                    ],
+                    dtypes={
+                        "dkey": pl.Utf8,
+                        "ngram": pl.Utf8,
+                        "ngram_lc": pl.Utf8,
+                        "ngram_tokens": pl.UInt32,
+                        "ngram_count": pl.Float64,
+                        "term_freq": pl.Float64,
+                        "doc_count": pl.UInt32,
+                        "insert_date": pl.Utf8,
+                    },
+                    null_values="\\N",
+                    comment_char='-',
+                    skip_rows=45,
+                    encoding='utf8-lossy',
+                    ignore_errors=True)
+        .filter(pl.col("ngram_tokens") > 1)
+        .select("ngram_lc")
+        .collect(streaming=True)
+        # .apply(lambda t: func(t[0]), return_dtype=pl.Utf8)
+        .apply(lambda t: " ".join(simple_preprocess(t[0])))
+        # .apply(lambda t: func(t[0]))
+        # .apply(lambda t: func2(t[0]))
+
+
+
+        # .with_columns(pl.col("ngram_lc").str.split(" ").alias("ngram_lc_split"))
+        # .select("ngram_lc_split")
+        # # .map(phrase)
+        # # .with_columns([
+        # #     pl.col("ngram_lc_split").map(lambda s: phrases.add_vocab(s.to_numpy())).alias("none")
+        # # ])
+        # .collect(streaming=True)
+    )
+    print(df)
+    frozen_phrases = Phraser(phrases)
+    print(f"back pain = {' '.join(frozen_phrases[['back', 'pain']])}")
+    # print(df.select(pl.count()).collect(streaming=True));
+    exit()
+
+    df = (
+        pl.scan_csv(source=DATASET_PATH,
+                    has_header=False,
+                    separator='\t',
+                    comment_char='-',
+                    skip_rows=46,
+                    new_columns=["dkey",
+                                 "ngram",
+                                 "ngram_lc",
+                                 "ngram_tokens",
+                                 "ngram_count",
+                                 "term_freq",
+                                 "doc_count",
+                                 "insert_date"],
+                    encoding='utf8-lossy')
+        .filter(pl.col("ngram_tokens") > 1)
+        # .select("ngram_lc")
+        .with_columns(pl.col("ngram_lc").str.split(" ").alias("ngram_lc_split"))
+        .select("ngram_lc_split")
+        .map(phrase)
+        .collect(streaming=True)
+    )
+    # print(df["ngram_lc"])
+
+    frozen_phrases = Phraser(phrases)
+    print(f"back pain = {' '.join(frozen_phrases[['back', 'pain']])}")
+
+    exit()
+
 
     print(POSTGRES_URI)
 
