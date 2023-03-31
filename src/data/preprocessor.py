@@ -8,23 +8,23 @@ import time
 from timeit import default_timer as timer
 from typing import List, Tuple
 
-from dask.distributed import Client
-import dask.dataframe as dd
-from dotenv import load_dotenv
+# from dask.distributed import Client
+# import dask.dataframe as dd
+# from dotenv import load_dotenv
 from gensim.models.phrases import FrozenPhrases, Phraser, Phrases
 from gensim.models.word2vec import Text8Corpus
 from gensim.parsing.preprocessing import remove_stopwords
 from gensim.utils import simple_preprocess
 import polars as pl
-import psycopg2
+# import psycopg2
 
 from data.amazon_dataset import AmazonDataset
 from data.small_dataset import LineSentence
 from stopwords import STOPWORDS
 
-load_dotenv()
+# load_dotenv()
 
-POSTGRES_URI = os.getenv("PG_URI")
+# POSTGRES_URI = os.getenv("PG_URI")
 
 logger = logging.getLogger(__name__)
 
@@ -393,6 +393,69 @@ def create_phrases(
     print(frozen_phrases[["san", "francisco"]])
 
 
+PARQUET_PREFIX = "doc_ngrams_0.parquet"
+
+
+def write_parquet(
+    skip_rows: int,
+    n_rows: int,
+    save_path: str,
+    data_path: str,
+    verbose: bool = False,
+):
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                        filename=os.path.join(save_path, "write_parquet.log"),
+                        level=logging.INFO if verbose else logging.WARN,
+                        datefmt="%Y-%m-%d %H:%M:%S")
+
+    start_time = time.time()
+    _ = (
+        pl.scan_csv(
+            source=data_path,
+            separator='\t',
+            new_columns=[
+                "dkey",
+                "ngram",
+                "ngram_lc",
+                "ngram_tokens",
+                "ngram_count",
+                "term_freq",
+                "doc_count",
+                "insert_date",
+            ],
+            dtypes={
+                "dkey": pl.Utf8,
+                "ngram": pl.Utf8,
+                "ngram_lc": pl.Utf8,
+                "ngram_tokens": pl.UInt32,
+                "ngram_count": pl.UInt32,
+                "term_freq": pl.Float64,
+                "doc_count": pl.UInt32,
+                "insert_date": pl.Utf8,
+            },
+            skip_rows=skip_rows,
+            n_rows=n_rows,
+            quote_char=None,
+            encoding='utf8'
+        )
+        .head(n=n_rows)
+        .filter(pl.col("ngram_tokens") > 1)
+        .with_columns(pl.col("ngram_lc").str.split(" ").alias("ngram_lc_split"))
+        .select("ngram_lc_split")
+        .sink_parquet(os.path.join(save_path, f"{PARQUET_PREFIX}"))
+    )
+    end_time = time.time()
+    logger.warning(f"time to write parquet: {end_time - start_time}")
+
+
+def read_parquet(save_path: str):
+    df = pl.read_parquet(os.path.join(save_path, PARQUET_PREFIX))
+    logger.warning(df)
+
+
 if __name__ == "__main__":
     # TODO: Change filename.
     # logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -400,21 +463,57 @@ if __name__ == "__main__":
     #                     level=logging.INFO,
     #                     datefmt="%Y-%m-%d %H:%M:%S")
 
+    # PARQUET_DIRECTORY = "./experiment_results"
+    # # DATASET_PATH = "./experiment_data/test_malamud_small.data"
+    # # DATASET_PATH = "./experiment_data/test_malamud.data"
+    # DATASET_PATH = "/storage8TB/chris/malamud_100m.data"
+
+    # if not os.path.exists(PARQUET_DIRECTORY):
+    #     os.makedirs(PARQUET_DIRECTORY)
+
+    # write_parquet(
+    #     45,
+    #     100000000,
+    #     PARQUET_DIRECTORY,
+    #     DATASET_PATH,
+    # )
+    # read_parquet(PARQUET_DIRECTORY)
+    # exit()
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n-processes", type=int, required=True)
-    parser.add_argument("--skip-rows", type=int, required=True)
-    parser.add_argument("--n-rows", type=int, required=True)
-    parser.add_argument("--rows-in-mem", type=int, required=True)
-    parser.add_argument("--save-path", type=str, required=True)
-    parser.add_argument("--data-path", type=str, required=True)
+    subparsers = parser.add_subparsers(dest="command")
+
+    phrase_parser = subparsers.add_parser("phrases")
+    phrase_parser.add_argument("--n-processes", type=int, required=True)
+    phrase_parser.add_argument("--skip-rows", type=int, required=True)
+    phrase_parser.add_argument("--n-rows", type=int, required=True)
+    phrase_parser.add_argument("--rows-in-mem", type=int, required=True)
+    phrase_parser.add_argument("--save-path", type=str, required=True)
+    phrase_parser.add_argument("--data-path", type=str, required=True)
+
+    parquet_parser = subparsers.add_parser("parquet")
+    parquet_parser.add_argument("--skip-rows", type=int, required=True)
+    parquet_parser.add_argument("--n-rows", type=int, required=True)
+    parquet_parser.add_argument("--save-path", type=str, required=True)
+    parquet_parser.add_argument("--data-path", type=str, required=True)
+
     args = parser.parse_args()
 
-    create_phrases(n_processes=args.n_processes,
-                   skip_rows=args.skip_rows,
-                   n_rows=args.n_rows,
-                   rows_in_mem=args.rows_in_mem,
-                   save_path=args.save_path,
-                   data_path=args.data_path)
+    if args.command == "phrases":
+        create_phrases(n_processes=args.n_processes,
+                       skip_rows=args.skip_rows,
+                       n_rows=args.n_rows,
+                       rows_in_mem=args.rows_in_mem,
+                       save_path=args.save_path,
+                       data_path=args.data_path)
+    elif args.command == "parquet":
+        write_parquet(skip_rows=args.skip_rows,
+                      n_rows=args.n_rows,
+                      save_path=args.save_path,
+                      data_path=args.data_path)
+        # read_parquet(args.save_path)
+    else:
+        raise ValueError(f"must use a command: {list(subparsers.choices.keys())}")
 
     exit()
 
