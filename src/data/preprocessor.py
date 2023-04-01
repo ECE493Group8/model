@@ -6,15 +6,15 @@ import multiprocessing as mp
 import os
 import time
 from timeit import default_timer as timer
-from typing import List, Tuple
+from typing import Iterable, List, Tuple
 
 # from dask.distributed import Client
 # import dask.dataframe as dd
 # from dotenv import load_dotenv
 from gensim.models.phrases import FrozenPhrases, Phraser, Phrases
 from gensim.models.word2vec import Text8Corpus
-from gensim.parsing.preprocessing import remove_stopwords
-from gensim.utils import simple_preprocess
+from gensim.parsing.preprocessing import remove_stopwords, remove_stopword_tokens
+from gensim.utils import simple_preprocess, to_unicode
 import polars as pl
 # import psycopg2
 
@@ -252,7 +252,8 @@ def merge_phrases(save_path: str) -> FrozenPhrases:
             os.path.join(save_path, f"{FROZEN_PHRASES_FILE_PREFIX}*"))
     
     frozen_phrases = FrozenPhrases.load(frozen_phrases_files[0])
-    for frozen_phrase_file in frozen_phrases_files:
+    for i, frozen_phrase_file in enumerate(frozen_phrases_files):
+        logger.warn(f"loading frozen phrase mode {i}")
         temp_frozen_phrases = FrozenPhrases.load(frozen_phrase_file)
         frozen_phrases.phrasegrams.update(temp_frozen_phrases.phrasegrams)
 
@@ -393,7 +394,88 @@ def create_phrases(
     print(frozen_phrases[["san", "francisco"]])
 
 
-PARQUET_PREFIX = "doc_ngrams_0.parquet"
+PARQUET_PREFIX = "doc_ngrams_0"
+
+
+phraser = FrozenPhrases.load("./phraser/frozen_phrases_merged.model")
+
+
+def func3(df: pl.DataFrame):
+    def rs(s):
+        # print(s)
+        s = remove_stopwords(s, STOPWORDS)
+        # print(s)
+        return s
+
+    df = df.select(pl.col("ngram_lc").apply(lambda s: rs(s), return_dtype=pl.Utf8))
+    df = df.filter(pl.col("ngram_lc").str.lengths() > 0)
+
+    return df
+
+
+def func2(df: pl.DataFrame):
+    def pp(s):
+        s = simple_preprocess(s)
+        if len(s):
+            return s
+        return [""]
+
+    # print(df)
+    df = df.select(pl.col("ngram_lc").apply(lambda s: pp(s), return_dtype=pl.List(pl.Utf8)))
+    df = df.filter(~pl.col("ngram_lc").arr.contains(""))
+    # print(df)
+    return df
+
+
+def func(df: pl.DataFrame):
+    def phrase(s_iterable: Iterable[str]) -> Iterable[str]:
+        # print(s_iterable)
+        # s = " ".join(s_iterable)
+        # print(f"joined: {s}")
+        # print(f"phrased: {phraser[s_iterable]}")
+        return phraser[s_iterable]
+        # return s_iterable
+
+    # print(df)
+    # df.apply(phrase, return_dtype=pl.Utf8)
+    # df = df.apply(phrase, return_dtype=pl.List(pl.Utf8))
+    df = df.select(pl.col("ngram_lc").apply(phrase, return_dtype=pl.List(pl.Utf8)))
+    # df = df.select(pl.col("ngram_lc").arr.join(" "))
+    # df = df.select(pl.col("ngram_lc").apply(p))
+    # print(df)
+    # df.apply(pl.col("ngram_lc").arr.join(" "), return_dtype=pl.Utf8)
+    # df.apply(simple_preprocess, return_dtype=pl.Utf8)
+    # df.apply(lambda s: remove_stopwords(s, STOPWORDS), return_dtype=pl.Utf8)
+    # df.apply(pl.col("ngram_lc").str.split(" "), return_dtype=pl.List)
+
+    # print(df)
+    # print(type(df))
+    # df.apply()
+
+    # pl.col("asdf").arr.
+    # df.apply(pl.col("ngram_lc").arr.join(" "), return_dtype=pl.Utf8)
+
+    # df = df.with_columns(pl.col("ngram_lc").alias("ngram_lc_alias"))
+    # df.with_columns(pl.col("ngram_lc").apply(phrase, return_dtype=pl.Utf8).alias("ngram_lc_joined"))
+
+    return df
+
+
+# python3 src/data/preprocessor.py parquet --skip-rows 45 --n-rows 100000000 --save-path /storage8TB/chris/100m_test --data-path /storage8TB/chris/malamud_100m.data 
+
+
+def custom_remove_words(s, stopwords):
+    s = to_unicode(s)
+    return remove_stopword_tokens(s, stopwords)
+
+
+def preprocess(str_itr: Iterable[str]) -> List[str]:
+    preprocessed_str = phrases[str_itr]
+    preprocessed_str = " ".join(preprocessed_str)
+    preprocessed_str = simple_preprocess(preprocessed_str)
+    preprocessed_str = " ".join(preprocessed_str)
+    preprocessed_str = custom_remove_words(preprocessed_str, STOPWORDS)
+    return preprocessed_str
 
 
 def write_parquet(
@@ -442,18 +524,45 @@ def write_parquet(
             encoding='utf8'
         )
         .head(n=n_rows)
-        .filter(pl.col("ngram_tokens") > 1)
-        .with_columns(pl.col("ngram_lc").str.split(" ").alias("ngram_lc_split"))
-        .select("ngram_lc_split")
-        .sink_parquet(os.path.join(save_path, f"{PARQUET_PREFIX}"))
+        # .filter(pl.col("ngram_tokens") > 1)
+
+        # .select(pl.col("ngram_lc").apply(lambda x: x.split()))
+        # <initial-splitting>
+        .filter(~pl.col("ngram_lc").is_null())  # Remove null values.
+        .select(pl.col("ngram_lc").str.split(" "))
+        # </initial-split>
+
+        # <preprocessing>
+        .map(lambda x: func(x), streamable=True, schema={"ngram_lc": pl.List(pl.Utf8)})
+        .select(pl.col("ngram_lc").arr.join(" "))
+        .map(lambda x: func2(x), streamable=True, schema={"ngram_lc": pl.List(pl.Utf8)})
+        .select(pl.col("ngram_lc").arr.join(" "))
+        .map(lambda x: func3(x), streamable=True, schema={"ngram_lc": pl.Utf8})
+        .select(pl.col("ngram_lc").str.split(" "))
+        # </preprocessing>
+
+        # .select(pl.col("ngram_lc").apply())
+        # .select(pl.col("ngram_lc").str.)
+
+        # .filter(~pl.col("ngram_lc").is_null())  # Remove null values.
+        # .collect(streaming=True)
+
+        # .map()
+
+        # .select("ngram_lc")
+        # .with_columns(pl.col("ngram_lc").str.split(" ").alias("ngram_lc_split"))  # Impacts memory
+        # .select("ngram_lc_split")
+        .sink_parquet(os.path.join(save_path, f"{PARQUET_PREFIX}.parquet"))
     )
+    print(_)
     end_time = time.time()
     logger.warning(f"time to write parquet: {end_time - start_time}")
 
 
 def read_parquet(save_path: str):
-    df = pl.read_parquet(os.path.join(save_path, PARQUET_PREFIX))
+    df = pl.read_parquet(os.path.join(save_path, f"{PARQUET_PREFIX}.parquet"))
     logger.warning(df)
+    logger.warning(df["ngram_lc_split"][0])
 
 
 if __name__ == "__main__":
@@ -479,6 +588,12 @@ if __name__ == "__main__":
     # )
     # read_parquet(PARQUET_DIRECTORY)
     # exit()
+
+    # p = read_parquet("./experiment_results/100m_test4/")
+    # print(p)
+    # print(p.shape)
+    # exit()
+
 
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command")
