@@ -32,8 +32,8 @@ class MalamudDataset:
             parq_path = self.parq_base_path.replace('<X>', str(i))
             self.keywords = (
                 pl.scan_parquet(parq_path)
-                # .select(pl.col(self.column).apply(lambda e: word2med_preprocess(e)))
-                .select(self.column)
+                # .select(pl.col(self.column).apply(lambda e: word2med_preprocess(e)))  # Apply preprocessing
+                .select(self.column)  # Don't apply preprocessing
                 .collect()
             )
 
@@ -50,6 +50,7 @@ if __name__ == "__main__":
     Benchmarks:
         For 650k row csv split into 16 chunks and converted to parquet:
             - Read when applying preprocessing function: ~4.2s
+            - Read when not applying preprocessing function: ~0.15s
     """
 
     parser = argparse.ArgumentParser()
