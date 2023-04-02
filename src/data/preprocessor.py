@@ -218,7 +218,7 @@ def write_parquet(
         # <initial-splitting>
         .filter(~pl.col("keywords_lc").is_null())  # Remove null values.
         .select(pl.col("keywords_lc").str.split(" "))
-        # </initial-split>
+        # </initial-splitting>
 
         # <preprocessing>
         .map(lambda x: preprocess(x), streamable=True)
