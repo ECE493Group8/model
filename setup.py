@@ -8,11 +8,7 @@ setup_info = dict(
     install_requires=[
         "gensim",
         "pandas",
-        "psycopg2",
         "polars",
-        "dask",
-        "dask[distributed]",
-        "pyarrow",
     ],
 )
 
