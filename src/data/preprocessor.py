@@ -394,9 +394,9 @@ def create_phrases(
     print(frozen_phrases[["san", "francisco"]])
 
 
-PARQUET_PREFIX = "doc_ngrams_0"
+# PARQUET_PREFIX = "doc_keywords"
 
-
+rows_preprocessed = 0
 phraser = FrozenPhrases.load("./phraser/frozen_phrases_merged.model")
 
 
@@ -407,8 +407,8 @@ def func3(df: pl.DataFrame):
         # print(s)
         return s
 
-    df = df.select(pl.col("ngram_lc").apply(lambda s: rs(s), return_dtype=pl.Utf8))
-    df = df.filter(pl.col("ngram_lc").str.lengths() > 0)
+    df = df.select(pl.col("keywords_lc").apply(lambda s: rs(s), return_dtype=pl.Utf8))
+    df = df.filter(pl.col("keywords_lc").str.lengths() > 0)
 
     return df
 
@@ -421,8 +421,8 @@ def func2(df: pl.DataFrame):
         return [""]
 
     # print(df)
-    df = df.select(pl.col("ngram_lc").apply(lambda s: pp(s), return_dtype=pl.List(pl.Utf8)))
-    df = df.filter(~pl.col("ngram_lc").arr.contains(""))
+    df = df.select(pl.col("keywords_lc").apply(lambda s: pp(s), return_dtype=pl.List(pl.Utf8)))
+    df = df.filter(~pl.col("keywords_lc").arr.contains(""))
     # print(df)
     return df
 
@@ -439,7 +439,7 @@ def func(df: pl.DataFrame):
     # print(df)
     # df.apply(phrase, return_dtype=pl.Utf8)
     # df = df.apply(phrase, return_dtype=pl.List(pl.Utf8))
-    df = df.select(pl.col("ngram_lc").apply(phrase, return_dtype=pl.List(pl.Utf8)))
+    df = df.select(pl.col("keywords_lc").apply(phrase, return_dtype=pl.List(pl.Utf8)))
     # df = df.select(pl.col("ngram_lc").arr.join(" "))
     # df = df.select(pl.col("ngram_lc").apply(p))
     # print(df)
@@ -466,22 +466,39 @@ def func(df: pl.DataFrame):
 
 def custom_remove_words(s, stopwords):
     s = to_unicode(s)
-    return remove_stopword_tokens(s, stopwords)
+    s = remove_stopword_tokens(s.split(), stopwords)
+    return s
 
 
-def preprocess(str_itr: Iterable[str]) -> List[str]:
-    preprocessed_str = phrases[str_itr]
-    preprocessed_str = " ".join(preprocessed_str)
-    preprocessed_str = simple_preprocess(preprocessed_str)
-    preprocessed_str = " ".join(preprocessed_str)
-    preprocessed_str = custom_remove_words(preprocessed_str, STOPWORDS)
-    return preprocessed_str
+def preprocess(df: pl.DataFrame) -> List[str]:
+    def _preprocess(str_itr: Iterable[str]) -> Iterable[str]:
+        preprocessed_str = phraser[str_itr]
+        preprocessed_str = " ".join(preprocessed_str)
+        preprocessed_str = simple_preprocess(preprocessed_str)
+        preprocessed_str = " ".join(preprocessed_str)
+        preprocessed_str = custom_remove_words(preprocessed_str, STOPWORDS)
+        if len(preprocessed_str):
+            return preprocessed_str
+        return [""]
+
+    # Log the progress.
+    global rows_preprocessed
+    rows_preprocessed_before = rows_preprocessed
+    rows_preprocessed += df.shape[0]
+    logger.warning(f"preprocessing rows {rows_preprocessed_before} to {rows_preprocessed}")
+
+    # Perform the preprocessing.
+    df = df.select(pl.col("keywords_lc").apply(_preprocess, return_dtype=pl.List(pl.Utf8)))
+    df = df.filter(~pl.col("keywords_lc").arr.contains(""))
+
+    return df
 
 
 def write_parquet(
     skip_rows: int,
     n_rows: int,
     save_path: str,
+    save_tag: str,
     data_path: str,
     verbose: bool = False,
 ):
@@ -489,10 +506,11 @@ def write_parquet(
         os.makedirs(save_path)
 
     logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-                        filename=os.path.join(save_path, "write_parquet.log"),
+                        filename=os.path.join(save_path, f"{save_tag}.log"),
                         level=logging.INFO if verbose else logging.WARN,
                         datefmt="%Y-%m-%d %H:%M:%S")
 
+    logger.warning("beginning writing parquet")
     start_time = time.time()
     _ = (
         pl.scan_csv(
@@ -500,21 +518,19 @@ def write_parquet(
             separator='\t',
             new_columns=[
                 "dkey",
-                "ngram",
-                "ngram_lc",
-                "ngram_tokens",
-                "ngram_count",
-                "term_freq",
+                "keywords",
+                "keywords_lc",
+                "keyword_tokens",
+                "keyword_score",
                 "doc_count",
                 "insert_date",
             ],
             dtypes={
                 "dkey": pl.Utf8,
-                "ngram": pl.Utf8,
-                "ngram_lc": pl.Utf8,
-                "ngram_tokens": pl.UInt32,
-                "ngram_count": pl.UInt32,
-                "term_freq": pl.Float64,
+                "keywords": pl.Utf8,
+                "keywords_lc": pl.Utf8,
+                "keyword_tokens": pl.UInt32,
+                "keyword_score": pl.UInt32,
                 "doc_count": pl.UInt32,
                 "insert_date": pl.Utf8,
             },
@@ -528,17 +544,20 @@ def write_parquet(
 
         # .select(pl.col("ngram_lc").apply(lambda x: x.split()))
         # <initial-splitting>
-        .filter(~pl.col("ngram_lc").is_null())  # Remove null values.
-        .select(pl.col("ngram_lc").str.split(" "))
+        .filter(~pl.col("keywords_lc").is_null())  # Remove null values.
+        .select(pl.col("keywords_lc").str.split(" "))
         # </initial-split>
 
         # <preprocessing>
-        .map(lambda x: func(x), streamable=True, schema={"ngram_lc": pl.List(pl.Utf8)})
-        .select(pl.col("ngram_lc").arr.join(" "))
-        .map(lambda x: func2(x), streamable=True, schema={"ngram_lc": pl.List(pl.Utf8)})
-        .select(pl.col("ngram_lc").arr.join(" "))
-        .map(lambda x: func3(x), streamable=True, schema={"ngram_lc": pl.Utf8})
-        .select(pl.col("ngram_lc").str.split(" "))
+        # .map(lambda x: func(x), streamable=True, schema={"ngram_lc": pl.List(pl.Utf8)})
+        # .select(pl.col("ngram_lc").arr.join(" "))
+        # .map(lambda x: func2(x), streamable=True, schema={"ngram_lc": pl.List(pl.Utf8)})
+        # .select(pl.col("ngram_lc").arr.join(" "))
+        # .map(lambda x: func3(x), streamable=True, schema={"ngram_lc": pl.Utf8})
+        # .select(pl.col("ngram_lc").str.split(" "))
+
+        .map(lambda x: preprocess(x), streamable=True)
+
         # </preprocessing>
 
         # .select(pl.col("ngram_lc").apply())
@@ -552,15 +571,14 @@ def write_parquet(
         # .select("ngram_lc")
         # .with_columns(pl.col("ngram_lc").str.split(" ").alias("ngram_lc_split"))  # Impacts memory
         # .select("ngram_lc_split")
-        .sink_parquet(os.path.join(save_path, f"{PARQUET_PREFIX}.parquet"))
+        .sink_parquet(os.path.join(save_path, f"{save_tag}.parquet"))
     )
-    print(_)
     end_time = time.time()
     logger.warning(f"time to write parquet: {end_time - start_time}")
 
 
-def read_parquet(save_path: str):
-    df = pl.read_parquet(os.path.join(save_path, f"{PARQUET_PREFIX}.parquet"))
+def read_parquet(save_path: str, save_tag: str):
+    df = pl.read_parquet(os.path.join(save_path, f"{save_tag}.parquet"))
     logger.warning(df)
     logger.warning(df["ngram_lc_split"][0])
 
@@ -610,6 +628,7 @@ if __name__ == "__main__":
     parquet_parser.add_argument("--skip-rows", type=int, required=True)
     parquet_parser.add_argument("--n-rows", type=int, required=True)
     parquet_parser.add_argument("--save-path", type=str, required=True)
+    parquet_parser.add_argument("--save-tag", type=str, required=True)
     parquet_parser.add_argument("--data-path", type=str, required=True)
 
     args = parser.parse_args()
@@ -625,8 +644,9 @@ if __name__ == "__main__":
         write_parquet(skip_rows=args.skip_rows,
                       n_rows=args.n_rows,
                       save_path=args.save_path,
+                      save_tag=args.save_tag,
                       data_path=args.data_path)
-        # read_parquet(args.save_path)
+        # read_parquet(args.save_path, args.save_tag)
     else:
         raise ValueError(f"must use a command: {list(subparsers.choices.keys())}")
 
