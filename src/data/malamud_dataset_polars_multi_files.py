@@ -26,7 +26,7 @@ class MalamudDataset:
 
     def __iter__(self):
 
-        for i in range(1, self.num_files+1):
+        for i in range(0, self.num_files):
 
             # Get the next keyword file
             parq_path = self.parq_base_path.replace('<X>', str(i))
