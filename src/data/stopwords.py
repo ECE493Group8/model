@@ -1,7 +1,8 @@
 """
 Obtained from NLTK's list of english stopwords
 
-Functional requirements: FR8
+These are the stopwords used by the original capstone group's project. They are
+made available here: https://github.com/ECE493Group13/dms/blob/main/api/src/api/word2vec/stopwords.py
 """
 
 STOPWORDS = {
