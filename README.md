@@ -2,7 +2,7 @@
 
 This repository contains the code to train models.
 
-# Installation
+## Installation
 
 ```sh
 $ python3 -m venv .venv
