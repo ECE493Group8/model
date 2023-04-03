@@ -115,3 +115,44 @@ $ python3 src/preprocess.py parquet \
   --save-tag docs_keywords_0 \
   --data-path /storage8TB/malamud/doc_keywords/doc_keywords_0.sql
 ```
+
+# Training
+
+Once the data is preprocessed, one can train the Word2Vec model using the
+following command:
+
+```sh
+$ python3 src/train.py \
+  --directory <directory> \
+  --workers <workers> \
+  --epochs <epochs> \
+  --vector_size <vector_size> \
+  --parq_base_path <parq_base_path> \
+  --num_files <num_files> \
+  --column <column>
+```
+
+### Arguments
+
+- `<directory>`: The directory to save the Word2Vec models and training logs.
+- `<workers>`: The number of processes to use for training.
+- `<epochs>`: The number of epochs to run during training.
+- `<vector_size>`: The number of dimensions each word vector will have.
+- `<parq_base_path>`: The path to the data parquet file(s). The file in the
+  path must contain and "<X>" where the file index (0, 1, ..., 9, a, b, ..., f)
+  replaces the "<X>". See the example below.
+- `<num_files>`: The number of files to train on in the given parquet path.
+- `<column>`: The column of the dataframe to train on.
+
+### Example
+
+```sh
+$ python3 src/train.py \
+  --directory ./train_keywords_0_300vec \
+  --workers 16 \
+  --epochs 5 \
+  --vector_size 300 \
+  --parq_base_path "/mnt/doc_keywords_parquets/doc_keywords_<X>.parquet" \
+  --num_files 1 \
+  --column keywords_lc
+```
