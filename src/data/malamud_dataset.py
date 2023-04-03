@@ -1,12 +1,8 @@
 import pandas as pd
 import polars as pl
-import argparse
-import gensim
 import itertools
+import argparse
 from time import perf_counter
-
-def word2med_preprocess(phrase: str):
-    return phrase.split()
 
 class MalamudDataset:
     """Iterator class for loading malamud general index data from a postgres database
@@ -55,17 +51,15 @@ if __name__ == "__main__":
             - Read when not applying preprocessing function: ~0.15s
     """
 
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("--parq_base_path", type=str, required=True)
-    # parser.add_argument("--num_files", type=int, required=True)
-    # parser.add_argument("--column", type=str, required=True)
-    # parser.add_argument("--print", action="store_true", default=False)
-    # args = parser.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--parq_base_path", type=str, required=True)
+    parser.add_argument("--num_files", type=int, required=True)
+    parser.add_argument("--column", type=str, required=True)
+    parser.add_argument("--print", action="store_true", default=False)
+    args = parser.parse_args()
     t = perf_counter()
-    dataset = MalamudDataset("/home/justin/uni/ece493/model/docs.doc_ngram_0_<X>.parquet", 16, "ngram_lc")
-    # dataset = MalamudDataset(args.parq_base_path, args.num_files, args.column)
+    dataset = MalamudDataset(args.parq_base_path, args.num_files, args.column)
     for r in dataset:
-        pass
-        # if args.print:
-            # print(r)
+        if args.print:
+            print(r)
     print(f"Time to read: {(perf_counter() - t):.4f}s")
