@@ -137,7 +137,7 @@ $ python3 src/train.py \
 - `<workers>`: The number of processes to use for training.
 - `<epochs>`: The number of epochs to run during training.
 - `<vector_size>`: The number of dimensions each word vector will have.
-- `<parquet_path>`: The file patterns of the parquet files to train on.
+- `<parquet_path>`: The file pattern of the parquet files to train on.
 - `<column>`: The column of the dataframe to train on.
 
 ### Example
