@@ -21,20 +21,19 @@ class MalamudDataset:
         self.num_files = num_files
         self.column = column
 
-        # List that will hold the iterators for each df
-        self.df_iters = []
-
-        # Load each df
-        for i in range(self.num_files):
+        # Load each df into memory
+        self.dfs = []
+        for i in range(1, self.num_files+1):
 
             # Get the next keyword file name
             parq_path = self.parq_base_path.replace('<X>', str(i))
-            self.df_iters.append(pl.scan_parquet(parq_path).select(column).collect().iter_rows())
+            self.dfs.append(pl.scan_parquet(parq_path).select(column).collect())
 
     def __iter__(self):
         """Yield a value from each dataframe"""
         empty = {}
-        for values in itertools.zip_longest(*self.df_iters, fillvalue=empty):
+        df_iters = map(pl.DataFrame.iter_rows, self.dfs)
+        for values in itertools.zip_longest(*df_iters, fillvalue=empty):
             for value in values:
                 if value != empty:
                     yield value[0]
@@ -43,7 +42,7 @@ if __name__ == "__main__":
     """
     If calling this file directly from the command line, print time to read all files
 
-    Example usage: "python src/data/malamud_dataset_polars_multi_files.py --parq_base_path "docs.doc_ngram_0_<X>.parquet" --num_files 16 --column ngram_lc"
+    Example usage: "python src/data/malamud_dataset.py --parq_base_path "docs.doc_ngram_0_<X>.parquet" --num_files 16 --column ngram_lc"
     
     Benchmarks:
         For 650k row csv split into 16 chunks and converted to parquet:
