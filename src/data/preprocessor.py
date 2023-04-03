@@ -134,8 +134,9 @@ def create_phrases(
     logger.warning(f"time to merge phrases = {end_time - start_time}")
 
 
+DEFAULT_FROZEN_PHRASES_MODEL = "./phraser/frozen_phrases_merged.model"
+phraser = FrozenPhrases.load(DEFAULT_FROZEN_PHRASES_MODEL)
 rows_preprocessed = 0
-phraser = FrozenPhrases.load("./phraser/frozen_phrases_merged.model")
 
 
 def custom_remove_words(s, stopwords):
