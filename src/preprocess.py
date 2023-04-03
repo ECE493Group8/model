@@ -11,7 +11,7 @@ from gensim.parsing.preprocessing import remove_stopword_tokens
 from gensim.utils import simple_preprocess, to_unicode
 import polars as pl
 
-from stopwords import STOPWORDS
+from data.stopwords import STOPWORDS
 
 logger = logging.getLogger(__name__)
 
