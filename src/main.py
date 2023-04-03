@@ -2,13 +2,10 @@ import argparse
 import logging
 import os
 
-from gensim.models.word2vec import LineSentence
-from dotenv import load_dotenv
-
 from models.word2vec import MalamudWord2Vec
-from data.amazon_dataset import AmazonDataset
 from data.malamud_dataset import MalamudDataset
 from utils.callbacks import EpochLogger, EpochSaver
+
 
 def main(args):
     _setup_directory(args)
@@ -23,8 +20,6 @@ def main(args):
             num_files=args.num_files,
             column=args.column
         )
-        # dataset = AmazonDataset("./amazon_product_reviews.json")
-        # dataset = LineSentence("./test_dataset.txt")  # For if you want to try an extremely small dataset.
         model = MalamudWord2Vec(workers=args.workers,
                                 epochs=args.epochs,
                                 vector_size=args.vector_size)
