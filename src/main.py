@@ -10,21 +10,6 @@ from data.amazon_dataset import AmazonDataset
 from data.malamud_dataset import MalamudDataset
 from utils.callbacks import EpochLogger, EpochSaver
 
-# Load database connection variables (set in .env file)
-load_dotenv()
-POSTGRES_HOST = os.getenv('PG_HOST', 'localhost')
-POSTGRES_PORT = os.getenv('PG_PORT', '5432')
-POSTGRES_DBNAME = os.getenv('PG_DBNAME', 'malamud')
-POSTGRES_USER = os.getenv('PG_USER')
-POSTGRES_PASSWORD = os.getenv('PG_PASS')
-POSTGRES_CONNECTION = (
-    ('host', POSTGRES_HOST),
-    ('port', POSTGRES_PORT),
-    ('dbname', POSTGRES_DBNAME),
-    ('user', POSTGRES_USER),
-    ('password', POSTGRES_PASSWORD),
-)
-
 def main(args):
     _setup_directory(args)
     _configure_logging(args)
@@ -34,11 +19,9 @@ def main(args):
         epoch_logger = EpochLogger()
         epoch_saver = EpochSaver(args.directory, frequency=1)
         dataset = MalamudDataset(
-            postgres_conn_params=POSTGRES_CONNECTION,
-            chunk_size=args.chunk_size,
-            table=args.table,
-            column=args.column,
-            rows=args.rows
+            parq_base_path=args.parq_base_path,
+            num_files=args.num_files,
+            column=args.column
         )
         # dataset = AmazonDataset("./amazon_product_reviews.json")
         # dataset = LineSentence("./test_dataset.txt")  # For if you want to try an extremely small dataset.
@@ -70,10 +53,9 @@ if __name__ == "__main__":
     parser.add_argument("--workers", type=int, required=True)
     parser.add_argument("--epochs", type=int, required=True)
     parser.add_argument("--vector_size", type=int, required=True)
-    parser.add_argument("--chunk_size", type=int, default=100000)
-    parser.add_argument("--table", type=str, default='docs.doc_ngrams_0')
-    parser.add_argument("--column", type=str, default='ngram_lc')
-    parser.add_argument("--rows", type=int, default=float('inf')),
+    parser.add_argument("--parq_base_path", type=str, default='/storage8TB/malamud-download/doc_keywords_parquets/doc_keywords_<X>.parquet')
+    parser.add_argument("--num_files", type=int, default=16)
+    parser.add_argument("--column", type=str, default='keywords_lc')
     parser.add_argument("--test", action="store_true")  # Used for testing.
     args = parser.parse_args()
 
