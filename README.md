@@ -127,8 +127,7 @@ $ python3 src/train.py \
   --workers <workers> \
   --epochs <epochs> \
   --vector_size <vector_size> \
-  --parq_base_path <parq_base_path> \
-  --num_files <num_files> \
+  --parquet_path <parquet_path> \
   --column <column>
 ```
 
@@ -138,10 +137,7 @@ $ python3 src/train.py \
 - `<workers>`: The number of processes to use for training.
 - `<epochs>`: The number of epochs to run during training.
 - `<vector_size>`: The number of dimensions each word vector will have.
-- `<parq_base_path>`: The path to the data parquet file(s). The file in the
-  path must contain and "<X>" where the file index (0, 1, ..., 9, a, b, ..., f)
-  replaces the "<X>". See the example below.
-- `<num_files>`: The number of files to train on in the given parquet path.
+- `<parquet_path>`: The file pattern of the parquet files to train on.
 - `<column>`: The column of the dataframe to train on.
 
 ### Example
@@ -152,7 +148,6 @@ $ python3 src/train.py \
   --workers 16 \
   --epochs 5 \
   --vector_size 300 \
-  --parq_base_path "/mnt/doc_keywords_parquets/doc_keywords_<X>.parquet" \
-  --num_files 1 \
+  --parquet_path "/mnt/doc_keywords_parquets/*.parquet" \
   --column keywords_lc
 ```

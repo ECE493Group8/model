@@ -3,8 +3,8 @@ import logging
 import os
 import time
 
-from models.word2vec import MalamudWord2Vec
 from data.malamud_dataset import MalamudDataset
+from models.word2vec import MalamudWord2Vec
 from utils.callbacks import EpochLogger, EpochSaver
 
 logger = logging.getLogger(__name__)
@@ -22,11 +22,7 @@ def main(args):
 
     logger.info("creating dataset")
     start_time = time.time()
-    dataset = MalamudDataset(
-        parq_base_path=args.parq_base_path,
-        num_files=args.num_files,
-        column=args.column
-    )
+    dataset = MalamudDataset(parquet_path=args.parquet_path, column=args.column)
     logger.info(f"creating dataset took {time.time() - start_time}")
 
     model = MalamudWord2Vec(workers=args.workers,
@@ -65,8 +61,7 @@ if __name__ == "__main__":
     parser.add_argument("--workers", type=int, required=True)
     parser.add_argument("--epochs", type=int, required=True)
     parser.add_argument("--vector_size", type=int, required=True)
-    parser.add_argument("--parq_base_path", type=str, default='/storage8TB/malamud-download/doc_keywords_parquets/doc_keywords_<X>.parquet')
-    parser.add_argument("--num_files", type=int, default=16)
+    parser.add_argument("--parquet_path", type=str, required=True)
     parser.add_argument("--column", type=str, default='keywords_lc')
     args = parser.parse_args()
 
