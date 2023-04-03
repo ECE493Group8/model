@@ -10,66 +10,108 @@ $ source .venv/bin/activate
 $ pip install -e .
 ```
 
-# Helpful Notes for Later
-- `m.wv.most_similar(negative=['man'], positive=['dad', 'woman'])`
-- https://radimrehurek.com/gensim/auto_examples/tutorials/run_word2vec.html#visualising-word-embeddings
+# Preprocessing Data
 
-# TODO before training
+The first step in training the model is to first preprocess the data. Follow the
+instructions below to do so.
 
-- Change hyperparameters
+## Creating Phrases
 
-# Database
+We want our Word2Vec algorithm to train on data that treats common bigrams as a
+single word. For example, to the Word2Vec model, the phrase "new york" is
+represented as "new_york".
 
-~7 mins to build index on 100M row table.
+We have developed a pre-trained "phrase model" available in the `phraser/`
+directory. It can be used as follows:
 
-Command for postgres executable:
-```sh
-export PATH=${PATH}:/usr/lib/postgresql/14/bin
+```python
+>>> from gensim.models.phrases import FrozenPhrases
+>>> phrases = FrozenPhrases.load("./phraser/frozen_phrases_merged.model")
+>>> phrases[["new", "york"]]
+['new_york']
 ```
 
-## Installing `psycopg2`
-- If you run into an error about libpq:
-  https://stackoverflow.com/questions/58961043/how-to-install-libpq-fe-h
+This phrase model was trained on about 8.7 billion lines of the first ngram
+slice of the Malamud Index.
 
-
-Statistics of 10M subset:
-- number of ngrams with just one: 20725634
-- number of ngrams: 99999955
-
-A lot of this information can be found here:
-https://ia802307.us.archive.org/18/items/GeneralIndex/data/README.txt
-
-## Keywords
-
-File: `doc_keywords_0.sql`
-- `dkey`: The document key (hash of the document)
-- `keywords`: The keywords
-- `keywords_lc`: The keywords in lowercase (1 to 5grams)
-- `keywords_tokens`: The number of keywords
-- `keyword_score`: YAKE score of how meaningful the word is in the document, the
-  the value, the more meaningful
-- `doc_count`: Always 1 (for analytical purposes)
-- `insert_date`: Date the record was inserted, initial load has NULL insert date
-
-There seem to be a list of words in alphabetical [order for each paper](#from-keywords)
-
+The phrase model that comes with this repository is fairly comprehensive. If you
+would like to develop your own phrase model, run the command:
 
 ```sh
-PG_URI=postgres://<username>:<password>@localhost/<database-name>
+$ python3 src/preprocess.py phrase \
+  --n-processes <n-processes> \
+  --skip-rows <skip-rows> \
+  --rows-in-mem <rows-in-mem> \
+  --save-path <save-path> \
+  --data-path <data-path>
 ```
 
-## N Grams
+### Arguments
 
-File: `doc_ngrams_0`
-- `dkey`: The document key (hash of the document)
-- `ngram`: The ngram
-- `ngram_lc`: The ngram in lowercase
-- `ngram_tokens`: The number of words in the ngram
-- `ngram_count`: 
-- `term_freq`: Number of occurences of the ngram in the document
-- `doc_count`: Always 1 (for analytical purposes)
-- `insert_date`: Date the record was inserted, initial load has NULL insert date
+- `<n-processes>`: The number of processes used to load in data from memory and
+  compute the phrases.
+- `<skip-rows>`: The number of rows to skip before reading ngrams from the input
+  file.
+- `<n-rows>`: The number of rows to read in and develop phrases from in the
+  input file.
+- `<rows-in-mem>`: The number of rows each process keeps in memory to process at
+  a time.
+- `<save-path>`: The directory to save phrase models and logs to.
+- `<data-path>`: The path to the Malamud Index ngrams (or keywords) file to
+  process.
 
-Is there punctuation?
+### Example
 
-Do we need ngrams with only one word?
+```sh
+$ python3 src/preprocess.py phrase \
+  --n-processes 16 \
+  --skip-rows 45 \
+  --n-rows 22336970000 \
+  --rows-in-mem 10000000 \
+  --save-path /storage8TB/phrase_model \
+  --data-path /storage8TB/malamud/doc_ngrams/doc_ngrams_0.sql
+```
+
+## Creating Preprocessed Data Parquets
+
+Once a phrase model is developed (or simply used from the `phraser/` directory),
+the phraser model can be used to preprocess data from an input ngrams or
+keywords file. In addition to combining common bigrams, the preprocessing will
+also remove unnecessary punctuation and stopwords. The preprocessed data is then
+stored in a parquet file which represents a dataframe with one column,
+"keywords_lc" of lists of strings for each preprocessed item.
+
+```sh
+$ python3 src/preprocess.py parquet \
+  --skip-rows <skip-rows> \
+  --n-rows <n-rows> \
+  --save-path <save-path> \
+  --save-tag <save-tag> \
+  --data-path <data-path>
+```
+
+> Note that by default, the phrase model in the `phraser/` directory is used. You
+can change this by changing the path to the phrase model,
+`DEFAULT_FROZEN_PHRASES_MODEL`, in `preprocessor.py`.
+
+### Arguments
+
+- `<skip-rows>`: The number of rows to skip before reading ngrams from the input
+  file.
+- `<n-rows>`: The number of rows to read in and develop phrases from in the
+  input file.
+- `<save-path>`: The directory to save phrase models and logs to.
+- `<save-tag>`: The name of the file to save the parquet and log file.
+- `<data-path>`: The path to the Malamud Index ngrams (or keywords) file to
+  process.
+
+### Example
+
+```sh
+$ python3 src/preprocess.py parquet \
+  --skip-rows 45 \
+  --n-rows 2400000000 \
+  --save-path /storage8TB/keywords_parquets \
+  --save-tag docs_keywords_0 \
+  --data-path /storage8TB/malamud/doc_keywords/doc_keywords_0.sql
+```
