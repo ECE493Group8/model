@@ -1,51 +1,65 @@
-import gensim
-import itertools
 import pandas as pd
-from streampq import streampq_connect
+import polars as pl
+import itertools
+import argparse
+from time import perf_counter
 
 class MalamudDataset:
     """Iterator class for loading malamud general index data from a postgres database
+
+    **Assumes that the data from a single parquet file fits in memory**
     
     Attributes:
-        postgres_conn_params: Tuple of tuples, each containing a key value pair with postgres connection details
-            e.g.
-                (
-                    ('host', 'localhost'),
-                    ('port', '5432'),
-                    ('dbname', 'my_db'),
-                    ('user', 'my_user'),
-                    ('password', 'my_password'),
-                )
-        chunk_size: Integer indicating the number of rows in each dataframe chunk
-        table: String indicating table to use within the malamud database
+        parq_path: String path to a parquet file to load, in form 'path/to/file_<X>.parquet'
+        num_files: Integer indicating the number of files to load, will replace <X> in parq_path
         column: String indicating column to use within the selected table
-        rows: Number of rows to train with, starting from 0
     """
-    def __init__(self, postgres_conn_params: tuple, chunk_size: int, table: str, column: str, rows: int=None):
-        self.postgres_conn_params = postgres_conn_params
-        self.chunk_size = chunk_size
-        self.table = table
+    def __init__(self, parq_base_path: str, num_files: int, column: str):
+        
+        # Save params
+        self.parq_base_path = parq_base_path
+        self.num_files = num_files
         self.column = column
-        self.pg_command = f"SELECT * FROM {self.table}{f' limit {rows}' if rows != float('inf') else ''}"
+
+        # List that will hold the iterators for each df
+        self.df_iters = []
+
+        # Load each df
+        for i in range(self.num_files):
+
+            # Get the next keyword file name
+            parq_path = self.parq_base_path.replace('<X>', str(i))
+            self.df_iters.append(pl.scan_parquet(parq_path).select(column).collect().iter_rows())
 
     def __iter__(self):
-        conn = streampq_connect(self.postgres_conn_params)
-        with conn as query:
-            for chunked_dfs in self.query_chunked_dfs(query, self.pg_command, chunk_size=self.chunk_size):  # TODO: Experiment with different chunk sizes
-                for df in chunked_dfs:
-                    for ngram in df:
-                        yield ngram
+        """Yield a value from each dataframe"""
+        empty = {}
+        for values in itertools.zip_longest(*self.df_iters, fillvalue=empty):
+            for value in values:
+                if value != empty:
+                    yield value[0]
 
-    # Adapted from example in https://github.com/uktrade/streampq#chunked-pandas-dataframes-of-sql-query-results
-    def query_chunked_dfs(self, query, sql, chunk_size):
+if __name__ == "__main__":
+    """
+    If calling this file directly from the command line, print time to read all files
 
-        def _chunked_df(columns, rows):
-            it = iter(rows)
-            while True:
-                df = pd.DataFrame(itertools.islice(it, chunk_size), columns=columns)[self.column].apply(gensim.utils.simple_preprocess)
-                if len(df) == 0:
-                    break
-                yield df
+    Example usage: "python src/data/malamud_dataset_polars_multi_files.py --parq_base_path "docs.doc_ngram_0_<X>.parquet" --num_files 16 --column ngram_lc"
+    
+    Benchmarks:
+        For 650k row csv split into 16 chunks and converted to parquet:
+            - Read when applying preprocessing function: ~4.2s
+            - Read when not applying preprocessing function: ~0.15s
+    """
 
-        for columns, rows in query(sql):
-            yield _chunked_df(columns, rows)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--parq_base_path", type=str, required=True)
+    parser.add_argument("--num_files", type=int, required=True)
+    parser.add_argument("--column", type=str, required=True)
+    parser.add_argument("--print", action="store_true", default=False)
+    args = parser.parse_args()
+    t = perf_counter()
+    dataset = MalamudDataset(args.parq_base_path, args.num_files, args.column)
+    for r in dataset:
+        if args.print:
+            print(r)
+    print(f"Time to read: {(perf_counter() - t):.4f}s")

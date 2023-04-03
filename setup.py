@@ -9,8 +9,6 @@ setup_info = dict(
         "gensim",
         "pandas",
         "polars",
-        "python-dotenv",
-        "streampq",
     ],
 )
 
