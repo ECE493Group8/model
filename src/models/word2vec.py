@@ -25,13 +25,12 @@ class MalamudWord2Vec(Word2Vec):
                          min_alpha=0.0001,
                          max_vocab_size=None,  # Limits RAM during vocabulary building (None for no limit)
                          max_final_vocab=None,  # Limits the vocab to a target vocab size
-                         sample=1e-3,  # TODO: This might not be a good value
+                         sample=1e-3,
                          hashfxn=hash,
                          epochs=epochs,
-                         trim_rule=None,  # TODO: Look into if we need this. This specifies whether certain words should remain in the vocabulary, be trimmed away, or handled using the default (None => discarded if word count < min_count).
-                         sorted_vocab=0,  # TODO: It's probably best if this is 0? If 1, sort the vocabulary by descending frequency before assigning word indexes
-                        #  batch_words=10000,  # Target size (in words) for batches of examples passed to worker threads
-                         shrink_windows=True,  # TODO: A variably-sized window, is this what we want?
+                         trim_rule=None,  # This specifies whether certain words should remain in the vocabulary, be trimmed away, or handled using the default (None => discarded if word count < min_count).
+                         sorted_vocab=0,  # If 1, sort the vocabulary by descending frequency before assigning word indexes
+                         shrink_windows=True,
                          null_word=0,
                          seed=1)
         
