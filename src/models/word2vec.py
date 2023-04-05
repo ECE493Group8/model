@@ -23,7 +23,7 @@ class MalamudWord2Vec(Word2Vec):
                          cbow_mean=0,  # 0 to use sum of context word vectors, 1 to use mean (only applies when CBOW is used)
                          alpha=0.025,  # Initial learning rate
                          min_alpha=0.0001,
-                         max_vocab_size=None,  # Limits RAM during vocabulary building (None for no limit)
+                         max_vocab_size=10_000_000,  # Limits RAM during vocabulary building (None for no limit)
                          max_final_vocab=None,  # Limits the vocab to a target vocab size
                          sample=1e-3,
                          hashfxn=hash,
