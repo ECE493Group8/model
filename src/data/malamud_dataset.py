@@ -1,8 +1,11 @@
 import polars as pl
 import itertools
 import argparse
+import logging
 import glob
 from time import perf_counter
+
+logger = logging.getLogger(__name__)
 
 class MalamudDataset:
     """Iterator class for loading malamud general index data from a postgres database
@@ -20,20 +23,21 @@ class MalamudDataset:
         self.parquet_path = parquet_path
         self.column = column
 
-        # Load each df into memory
-        self.dfs = []
-        for parquet_file in glob.glob(parquet_path):
-            # Get the next keyword file name
-            self.dfs.append(pl.scan_parquet(parquet_file).select(column).collect())
-
     def __iter__(self):
         """Yield a value from each dataframe"""
-        empty = {}
-        df_iters = map(pl.DataFrame.iter_rows, self.dfs)
-        for values in itertools.zip_longest(*df_iters, fillvalue=empty):
-            for value in values:
-                if value != empty:
-                    yield value[0]
+
+        # Load parquets file into memory one at a time
+        for parquet_file in glob.glob(self.parquet_path):
+
+            # Read the parquet into memory
+            logger.info(f"Reading {parquet_file} into memory...")
+            df = pl.scan_parquet(parquet_file).select(self.column).collect()
+            logger.info(f"Finished reading {parquet_file} into memory. Iterating...")
+
+            # Yield each row
+            for row in df.iter_rows():
+                yield row[0]
+            logger.info(f"Finished iterating {parquet_file}")
 
 if __name__ == "__main__":
     """
