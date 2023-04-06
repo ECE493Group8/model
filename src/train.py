@@ -31,7 +31,7 @@ def main(args):
 
     logger.info("building vocab")
     start_time = time.time()
-    model.build_vocab(dataset, progress_per=100000)
+    model.build_vocab(dataset, progress_per=args.build_vocab_progress_per)
     logger.info(f"building vocab took {time.time() - start_time}")
 
     logger.info("training")
@@ -63,6 +63,9 @@ if __name__ == "__main__":
     parser.add_argument("--vector_size", type=int, required=True)
     parser.add_argument("--parquet_path", type=str, required=True)
     parser.add_argument("--column", type=str, default='keywords_lc')
+    parser.add_argument("--build_vocab_progress_per",
+                        type=int,
+                        default=10_000_000)
     args = parser.parse_args()
 
     main(args)

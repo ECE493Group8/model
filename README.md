@@ -128,7 +128,8 @@ $ python3 src/train.py \
   --epochs <epochs> \
   --vector_size <vector_size> \
   --parquet_path <parquet_path> \
-  --column <column>
+  --column <column> \
+  --build_vocab_progress_per <progress_per>
 ```
 
 ### Arguments
@@ -139,6 +140,8 @@ $ python3 src/train.py \
 - `<vector_size>`: The number of dimensions each word vector will have.
 - `<parquet_path>`: The file pattern of the parquet files to train on.
 - `<column>`: The column of the dataframe to train on.
+- `<progress_per>`: Log to file after processing this number of sentences when
+  building the vocabulary.
 
 ### Example
 
@@ -149,5 +152,6 @@ $ python3 src/train.py \
   --epochs 5 \
   --vector_size 300 \
   --parquet_path "/mnt/doc_keywords_parquets/*.parquet" \
-  --column keywords_lc
+  --column keywords_lc \
+  --build_vocab_progress_per 10000000
 ```
