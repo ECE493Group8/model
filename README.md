@@ -47,6 +47,7 @@ To begin, follow the instructions in the following order:
 $ python3 -m venv .venv
 $ source .venv/bin/activate
 $ pip install -e .
+$ export PYTHONPATH=${PYTHONPATH}:${PWD}/src
 ```
 
 # Preprocessing Data
