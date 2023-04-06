@@ -2,6 +2,45 @@
 
 This repository contains the code to train models.
 
+Preprocessing as well as training functionality is outlined below. Note however
+that we ran preprocessing and training on a machine that had 32 cores, 128 GB,
+and 8 TB of disk space.
+
+We have attempted to make the preprocessing and training as flexible as possible
+by adding command-line arguments that one can modify to limit the amount of
+memory or processes used by these programs. However, we cannot guarantee the
+programs will work as efficiently, or they may crash if there is not enough
+available memory.
+
+The [Malamud Index](https://archive.org/details/GeneralIndex) data that we used
+can be obtained from the following links:
+
+- https://archive.org/download/GeneralIndex.ngrams.0/doc_ngrams_0.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.0/doc_keywords_0.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.1/doc_keywords_1.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.2/doc_keywords_2.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.3/doc_keywords_3.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.4/doc_keywords_4.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.5/doc_keywords_5.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.6/doc_keywords_6.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.7/doc_keywords_7.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.8/doc_keywords_8.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.9/doc_keywords_9.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.a/doc_keywords_a.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.b/doc_keywords_b.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.c/doc_keywords_c.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.d/doc_keywords_d.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.e/doc_keywords_e.sql.zip
+- https://archive.org/download/GeneralIndex.keywords.f/doc_keywords_f.sql.zip
+
+Note that when unzipped, the ngrams file is approximately 2.3 TB, and each
+keywords file is about 100 GB.
+
+To begin, follow the instructions in the following order:
+1. [Installation](#installation)
+2. [Preprocessing data](#preprocessing-data)
+3. [Training](#training)
+
 ## Installation
 
 ```sh
