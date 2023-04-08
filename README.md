@@ -74,8 +74,17 @@ directory. It can be used as follows:
 This phrase model was trained on about 8.7 billion lines of the first ngram
 slice of the Malamud Index.
 
-The phrase model that comes with this repository is fairly comprehensive. If you
-would like to develop your own phrase model, run the command:
+This phrase model can be downloaded using Git Large File System (LFS):
+
+```sh
+$ curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+$ sudo apt-get install git-lfs
+$ git lfs fetch --all
+$ git lfs pull  # This should actually download the phrase model to the ./phraser directory
+```
+
+The phrase model that comes with this repository is fairly comprehensive. But if
+you would like to develop your own phrase model, run the command:
 
 ```sh
 $ python3 src/preprocess.py phrase \
