@@ -155,3 +155,24 @@ $ python3 src/train.py \
   --column keywords_lc \
   --build_vocab_progress_per 10000000
 ```
+
+# Testing
+
+We use Python's `unittest` testing library and the code coverage library
+`coverage` to ensure 100% line coverage.
+
+Run the tests using the command:
+
+```sh
+$ python3 -m coverage run -m unittest discover
+```
+
+Then, verify the code coverage with the command:
+
+```sh
+$ python3 -m coverage report
+```
+
+It should show that all tested files have at least 100% line coverage. Our
+testing document outlines other testing-related guarantees, such as equivalence
+class testing, of our tests in this repository.

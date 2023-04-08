@@ -12,6 +12,9 @@ class MalamudWord2Vec(Word2Vec):
                  workers: int,
                  epochs: int,
                  vector_size: int):
+        assert workers > 0
+        assert epochs > 0
+        assert vector_size > 0
         super().__init__(vector_size=vector_size,
                          window=MalamudWord2Vec.MAX_NGRAM_SIZE,
                          min_count=MalamudWord2Vec.MIN_NGRAM_SIZE,  # Ignore all words with total frequency lower than this
@@ -38,23 +41,9 @@ class MalamudWord2Vec(Word2Vec):
               dataset: Iterable,
               callbacks: List[CallbackAny2Vec],
               report_delay: float):
-            #   save_frequency: float):
-        # self.save_counter = 0
-        # self.save_every = int(save_frequency // report_delay)
-        # assert self.save_every >= 1
         super().train(corpus_iterable=dataset,
                       epochs=self.epochs,
                       total_examples=self.corpus_count,
                       compute_loss=True,
                       callbacks=callbacks,
                       report_delay=report_delay)
-
-    def _log_progress(self, job_queue, progress_queue, cur_epoch, example_count,
-                      total_examples, raw_word_count, total_words,
-                      trained_word_count, elapsed):
-        # self.save_counter += 1
-        # if self.save_counter % self.save_every == 0:
-        #     self.save()
-        super()._log_progress(job_queue, progress_queue, cur_epoch,
-                              example_count, total_examples, raw_word_count,
-                              total_words, trained_word_count, elapsed)

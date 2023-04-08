@@ -28,7 +28,7 @@ def merge_phrases(save_path: str) -> FrozenPhrases:
     
     frozen_phrases = FrozenPhrases.load(frozen_phrases_files[0])
     for i, frozen_phrase_file in enumerate(frozen_phrases_files):
-        logger.warn(f"loading frozen phrase mode {i}")
+        logger.warning(f"loading frozen phrase mode {i}")
         temp_frozen_phrases = FrozenPhrases.load(frozen_phrase_file)
         frozen_phrases.phrasegrams.update(temp_frozen_phrases.phrasegrams)
 
