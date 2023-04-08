@@ -38,8 +38,9 @@ keywords file is about 100 GB.
 
 To begin, follow the instructions in the following order:
 1. [Installation](#installation)
-2. [Preprocessing data](#preprocessing-data)
-3. [Training](#training)
+2. [Run unit tests](#testing)
+3. [Preprocessing data](#preprocessing-data)
+4. [Training](#training)
 
 ## Installation
 
