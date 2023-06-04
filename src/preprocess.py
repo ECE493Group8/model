@@ -163,8 +163,8 @@ def preprocess(df: pl.DataFrame) -> List[str]:
     logger.warning(f"preprocessing rows {rows_preprocessed_before} to {rows_preprocessed}")
 
     # Perform the preprocessing.
-    df = df.select(pl.col("keywords_lc").apply(_preprocess, return_dtype=pl.List(pl.Utf8)))
-    df = df.filter(~pl.col("keywords_lc").arr.contains(""))
+    df = df.select(pl.col("ngram_lc").apply(_preprocess, return_dtype=pl.List(pl.Utf8)))
+    df = df.filter(~pl.col("ngram_lc").arr.contains(""))
 
     return df
 
@@ -193,19 +193,21 @@ def write_parquet(
             separator='\t',
             new_columns=[
                 "dkey",
-                "keywords",
-                "keywords_lc",
-                "keyword_tokens",
-                "keyword_score",
+                "ngram",
+                "ngram_lc",
+                "ngram_tokens",
+                "ngram_count",
+                "term_freq",
                 "doc_count",
                 "insert_date",
             ],
             dtypes={
                 "dkey": pl.Utf8,
-                "keywords": pl.Utf8,
-                "keywords_lc": pl.Utf8,
-                "keyword_tokens": pl.UInt32,
-                "keyword_score": pl.UInt32,
+                "ngram": pl.Utf8,
+                "ngram_lc": pl.Utf8,
+                "ngram_tokens": pl.UInt32,
+                "ngram_count": pl.UInt32,
+                "term_freq": pl.Float64,
                 "doc_count": pl.UInt32,
                 "insert_date": pl.Utf8,
             },
@@ -217,8 +219,8 @@ def write_parquet(
         .head(n=n_rows)
 
         # <initial-splitting>
-        .filter(~pl.col("keywords_lc").is_null())  # Remove null values.
-        .select(pl.col("keywords_lc").str.split(" "))
+        .filter(~pl.col("ngram_lc").is_null())  # Remove null values.
+        .select(pl.col("ngram_lc").str.split(" "))
         # </initial-splitting>
 
         # <preprocessing>
